@@ -1,0 +1,29 @@
+{
+  "name": "enterprise-repair-inventory-platform",
+  "version": "2.0.0",
+  "description": "Enterprise Repair & Inventory Management Platform with React Frontend and Laravel 12 Backend",
+  "scripts": {
+    "dev": "concurrently -n \"LARAVEL,REACT\" -c \"red,cyan\" \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && php artisan serve --port=8000",
+    "dev:frontend": "cd frontend && npm run dev",
+    "build:frontend": "cd frontend && npm run build",
+    "db:migrate": "cd backend && php artisan migrate",
+    "db:seed": "cd backend && php artisan migrate:fresh --seed"
+  },
+  "keywords": [
+    "enterprise",
+    "inventory",
+    "repair-management",
+    "laravel",
+    "react",
+    "vite",
+    "typescript",
+    "qr-tracking",
+    "atomic-transactions"
+  ],
+  "author": "Principal Full-Stack Architect",
+  "license": "ISC",
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
