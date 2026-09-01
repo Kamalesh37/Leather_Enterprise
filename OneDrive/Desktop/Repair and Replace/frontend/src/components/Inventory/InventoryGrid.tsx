@@ -15,7 +15,10 @@ import {
   TrendingDown,
   Edit,
   Sliders,
+  X,
+  Sparkles,
 } from 'lucide-react';
+
 
 export const InventoryGrid: React.FC = () => {
   const toast = useToast();
@@ -53,12 +56,12 @@ export const InventoryGrid: React.FC = () => {
 
   const [submitting, setSubmitting] = useState<boolean>(false);
 
-  const fetchInventory = async () => {
+  const fetchInventory = async (searchQuery: string = search) => {
     setLoading(true);
     try {
       const [partsRes, statsRes] = await Promise.all([
         Api.listParts({
-          search: search || undefined,
+          search: searchQuery || undefined,
           category: selectedCategory || undefined,
           low_stock: lowStockOnly || undefined,
         }),
@@ -78,14 +81,37 @@ export const InventoryGrid: React.FC = () => {
     }
   };
 
+  // Debounced search on query or filter changes
   useEffect(() => {
-    fetchInventory();
-  }, [selectedCategory, lowStockOnly]);
+    const timer = setTimeout(() => {
+      fetchInventory(search);
+    }, 220);
+    return () => clearTimeout(timer);
+  }, [search, selectedCategory, lowStockOnly]);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    fetchInventory();
+  const highlightMatch = (text: string, query: string) => {
+    if (!query.trim() || query.length < 2) return text;
+    const regex = new RegExp(`(${query.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')})`, 'gi');
+    const parts = text.split(regex);
+    return parts.map((part, i) =>
+      part.toLowerCase() === query.toLowerCase() ? (
+        <mark
+          key={i}
+          style={{
+            background: 'rgba(99, 102, 241, 0.45)',
+            color: '#fff',
+            borderRadius: '2px',
+            padding: '0 2px',
+          }}
+        >
+          {part}
+        </mark>
+      ) : (
+        part
+      )
+    );
   };
+
 
   const handleRestockSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -234,16 +260,39 @@ export const InventoryGrid: React.FC = () => {
 
       {/* Filter Bar */}
       <div className="card" style={{ padding: '16px', marginBottom: '20px' }}>
-        <form onSubmit={handleSearch} style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
-          <div className="input-group" style={{ flex: '1 1 280px' }}>
+        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="input-group" style={{ flex: '1 1 280px', position: 'relative' }}>
             <Search size={16} className="input-icon" />
             <input
               type="text"
               className="form-input"
+              style={{ paddingRight: search ? '36px' : '14px' }}
               placeholder="Search by part name, SKU, or storage bin..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                style={{
+                  position: 'absolute',
+                  right: '10px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+                title="Clear search"
+              >
+                <X size={15} />
+              </button>
+            )}
           </div>
 
           <select
@@ -274,13 +323,34 @@ export const InventoryGrid: React.FC = () => {
             </span>
           </label>
 
-          <button type="submit" className="btn btn-secondary">
-            Filter
+          {(search || selectedCategory || lowStockOnly) && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                setSearch('');
+                setSelectedCategory('');
+                setLowStockOnly(false);
+              }}
+            >
+              Reset All
+            </button>
+          )}
+
+          <button type="button" className="btn btn-ghost" onClick={() => fetchInventory()} title="Refresh">
+            <RefreshCw size={16} className={loading ? 'spin' : ''} />
           </button>
-          <button type="button" className="btn btn-ghost" onClick={fetchInventory} title="Refresh">
-            <RefreshCw size={16} />
-          </button>
-        </form>
+        </div>
+
+        {/* Live Filter Indicator */}
+        {(search || selectedCategory || lowStockOnly) && (
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border-color)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+            <span>Available Results: <strong style={{ color: 'var(--text-primary)' }}>{parts.length} parts</strong></span>
+            {search && <span className="badge badge-primary">Search: "{search}"</span>}
+            {selectedCategory && <span className="badge badge-cyan">Category: {selectedCategory}</span>}
+            {lowStockOnly && <span className="badge badge-amber">Low Stock Only</span>}
+          </div>
+        )}
       </div>
 
       {/* Parts Table */}
@@ -316,12 +386,13 @@ export const InventoryGrid: React.FC = () => {
                 return (
                   <tr key={p.id}>
                     <td>
-                      <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{p.name}</div>
+                      <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{highlightMatch(p.name, search)}</div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                        SKU: {p.part_number}
+                        SKU: {highlightMatch(p.part_number, search)}
                       </div>
                     </td>
                     <td>
+
                       <span className="badge badge-secondary">{p.category}</span>
                     </td>
                     <td>

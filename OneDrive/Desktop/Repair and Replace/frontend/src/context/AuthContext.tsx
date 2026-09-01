@@ -8,6 +8,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   switchDemoRole: (role: Role) => Promise<void>;
+  switchUser: (userId: number) => Promise<void>;
   hasRole: (roles: Role | Role[]) => boolean;
   hasPermission: (permissionKey: keyof Omit<UserPermission, 'id' | 'user_id'>) => boolean;
 }
@@ -83,6 +84,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const switchUser = async (userId: number) => {
+    setLoading(true);
+    try {
+      const res = await Api.switchUser(userId);
+      if (res.success && res.data) {
+        setAuthToken(res.data.token);
+        setUser(res.data.user);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const hasRole = (roles: Role | Role[]): boolean => {
     if (!user) return false;
     if (user.role === 'admin') return true;
@@ -106,6 +120,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         login,
         logout,
         switchDemoRole,
+        switchUser,
         hasRole,
         hasPermission,
       }}
@@ -114,6 +129,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     </AuthContext.Provider>
   );
 };
+
 
 export const useAuth = () => {
   const context = useContext(AuthContext);

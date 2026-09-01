@@ -2,6 +2,9 @@ import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
   LayoutDashboard,
+  BarChart3,
+  Activity,
+  TrendingUp,
   Users,
   Cpu,
   Truck,
@@ -13,6 +16,12 @@ import {
   ScrollText,
   ShieldCheck,
   Zap,
+  Layers,
+  Building,
+  MapPin,
+  ArrowUp,
+  FileText,
+  Send,
 } from 'lucide-react';
 
 export type NavTab =
@@ -25,7 +34,8 @@ export type NavTab =
   | 'tech_lead'
   | 'spare_head'
   | 'inventory'
-  | 'audit_ledger';
+  | 'audit_ledger'
+  | 'work_reports';
 
 interface NavItem {
   id: NavTab;
@@ -47,6 +57,7 @@ interface SidebarProps {
   onTabChange: (tab: NavTab) => void;
   pendingApprovalsCount?: number;
   pendingDispatchesCount?: number;
+  pendingReportsCount?: number;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -54,23 +65,38 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onTabChange,
   pendingApprovalsCount = 0,
   pendingDispatchesCount = 0,
+  pendingReportsCount = 0,
 }) => {
   const { user, hasPermission } = useAuth();
+
+  const getAppTitle = (role?: string) => {
+    switch (role) {
+      case 'admin':
+        return '🏢 Enterprise Admin Suite';
+      case 'block_manager':
+        return '🏢 Block Management Portal';
+      case 'floor_manager':
+        return '📐 Floor Operations Portal';
+      case 'line_supervisor':
+        return '⚙️ Line Supervisor App';
+      case 'mechanic':
+        return '🔧 Technician Mobile Console';
+      case 'tech_lead':
+        return '🔬 Tech Lead Engineering App';
+      case 'spare_head':
+        return '📦 Warehouse & Parts App';
+      default:
+        return 'Enterprise Portal';
+    }
+  };
 
   const groups: NavGroup[] = [
     {
       heading: 'FACTORY OVERSIGHT',
       items: [
         {
-          id: 'dashboard',
-          label: 'Factory Analytics',
-          icon: LayoutDashboard,
-          roles: ['admin', 'block_manager', 'floor_manager', 'tech_lead'],
-          permission: 'can_view_analytics',
-        },
-        {
           id: 'crew',
-          label: 'Crew & RBAC Matrix',
+          label: 'Crew & Reporting Tree',
           icon: Users,
           roles: ['admin'],
           permission: null,
@@ -78,7 +104,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         },
         {
           id: 'machines',
-          label: 'Machinery & QR Registry',
+          label: 'Machinery Registry',
           icon: Cpu,
           roles: ['admin', 'block_manager', 'floor_manager', 'line_supervisor', 'mechanic', 'tech_lead', 'spare_head'],
           permission: null,
@@ -120,6 +146,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ],
     },
     {
+      heading: 'OPERATIONAL REPORTING & ESCALATION',
+      items: [
+        {
+          id: 'work_reports',
+          label: 'Work Reports & Higher Sign-off',
+          icon: FileText,
+          roles: ['admin', 'block_manager', 'floor_manager', 'line_supervisor', 'mechanic', 'tech_lead', 'spare_head'],
+          permission: null,
+          counter: pendingReportsCount,
+        },
+      ],
+    },
+    {
       heading: 'WAREHOUSE & INVENTORY',
       items: [
         {
@@ -150,6 +189,91 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside className="sidebar">
+      {/* Active App Header in Sidebar */}
+      {user && (
+        <div
+          style={{
+            padding: '12px 14px',
+            marginBottom: '8px',
+            borderRadius: 'var(--radius-md)',
+            background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.08) 0%, rgba(6, 182, 212, 0.04) 100%)',
+            border: '1px solid rgba(99, 102, 241, 0.25)',
+          }}
+        >
+          <div style={{ fontSize: '0.68rem', fontWeight: 800, color: 'var(--accent-cyan)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            ACTIVE APPLICATION
+          </div>
+          <div style={{ fontWeight: 800, fontSize: '0.92rem', color: '#fff', marginTop: '2px' }}>
+            {getAppTitle(user.role)}
+          </div>
+          <div style={{ fontSize: '0.76rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
+            Account: <strong style={{ color: '#fff' }}>{user.name}</strong>
+          </div>
+          {user.higher_official && (
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px', borderTop: '1px solid rgba(255, 255, 255, 0.06)', paddingTop: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <ArrowUp size={11} color="var(--primary-light)" />
+              <span>Reports to: <strong style={{ color: 'var(--text-primary)' }}>{user.higher_official.name}</strong></span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* DEDICATED ALWAYS-PRESENT ENTERPRISE ANALYTICS */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '6px' }}>
+        <div className="sidebar-menu-heading" style={{ color: 'var(--accent-cyan)' }}>
+          INTELLIGENCE & KPIS
+        </div>
+        <nav className="sidebar-nav">
+          <button
+            className={`sidebar-nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
+            onClick={() => onTabChange('dashboard')}
+            style={
+              activeTab === 'dashboard'
+                ? {
+                    background: 'linear-gradient(135deg, rgba(99, 102, 241, 0.22) 0%, rgba(6, 182, 212, 0.18) 100%)',
+                    borderColor: 'rgba(99, 102, 241, 0.5)',
+                    boxShadow: '0 0 16px rgba(99, 102, 241, 0.15)',
+                  }
+                : {
+                    background: 'rgba(255, 255, 255, 0.02)',
+                    border: '1px solid rgba(255, 255, 255, 0.05)',
+                  }
+            }
+          >
+            <BarChart3 size={18} color={activeTab === 'dashboard' ? '#38bdf8' : 'var(--text-secondary)'} />
+            <span style={{ flex: 1, textAlign: 'left', fontWeight: 700 }}>
+              Live Plant Analytics
+            </span>
+            <span
+              className="badge"
+              style={{
+                background: 'rgba(16, 185, 129, 0.2)',
+                color: '#34d399',
+                border: '1px solid rgba(16, 185, 129, 0.4)',
+                fontSize: '0.65rem',
+                fontWeight: 700,
+                padding: '2px 6px',
+                borderRadius: '4px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '3px',
+              }}
+            >
+              <span
+                style={{
+                  width: '5px',
+                  height: '5px',
+                  borderRadius: '50%',
+                  backgroundColor: '#34d399',
+                  display: 'inline-block',
+                }}
+              ></span>
+              LIVE
+            </span>
+          </button>
+        </nav>
+      </div>
+
       {groups.map((group, gIdx) => {
         const visibleItems = group.items.filter((item) => {
           const isAllowedRole = !item.roles || item.roles.includes(user?.role || '');

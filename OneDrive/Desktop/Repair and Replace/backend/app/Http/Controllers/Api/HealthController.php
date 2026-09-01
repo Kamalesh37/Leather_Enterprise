@@ -24,6 +24,7 @@ class HealthController extends Controller
                 'timestamp' => now()->toISOString(),
                 'environment' => config('app.env'),
                 'database' => $dbStatus,
+                'connection' => strtoupper(config('database.default')),
                 'framework' => 'Laravel 12 (PHP ' . PHP_VERSION . ')',
             ],
         ]);

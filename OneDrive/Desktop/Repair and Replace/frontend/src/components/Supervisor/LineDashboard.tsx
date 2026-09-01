@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Api } from '../../api/client';
-import { Machine, RepairLog, ServiceCatalogItem, User } from '../../types';
+import { Line, Machine, RepairLog, ServiceCatalogItem, User } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { QRScannerModal } from './QRScannerModal';
 import { BreakdownIntakeModal } from './BreakdownIntakeModal';
@@ -17,11 +17,18 @@ import {
   MapPin,
   RefreshCw,
   Plus,
+  Layers,
+  Filter,
 } from 'lucide-react';
 
 export const LineDashboard: React.FC = () => {
   const { user } = useAuth();
   const toast = useToast();
+
+  const [availableLines, setAvailableLines] = useState<Line[]>([]);
+  const [selectedLineId, setSelectedLineId] = useState<number | ''>(
+    user?.line_id ? Number(user.line_id) : ''
+  );
 
   const [machines, setMachines] = useState<Machine[]>([]);
   const [activeTickets, setActiveTickets] = useState<RepairLog[]>([]);
@@ -39,33 +46,73 @@ export const LineDashboard: React.FC = () => {
   const [ticketToAssign, setTicketToAssign] = useState<RepairLog | null>(null);
   const [selectedMechanicId, setSelectedMechanicId] = useState<string>('');
 
+  // 1. Fetch available hierarchy lines on mount
+  useEffect(() => {
+    Api.getHierarchyOptions()
+      .then((res) => {
+        if (res.success && res.data && res.data.lines) {
+          setAvailableLines(res.data.lines);
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to fetch hierarchy lines:', err);
+      });
+  }, []);
+
+  // 2. Synchronize initial line with user's assigned line
+  useEffect(() => {
+    if (user?.line_id) {
+      setSelectedLineId(Number(user.line_id));
+    }
+  }, [user?.line_id]);
+
+  // 3. Fetch station data for the active line
   const fetchLineData = async () => {
     setLoading(true);
     try {
-      const lineId = user?.line_id || undefined;
+      const lineParam = selectedLineId ? Number(selectedLineId) : undefined;
 
-      const [machinesRes, ticketsRes, mechRes] = await Promise.all([
-        Api.listMachines({ line_id: lineId }),
-        Api.listTickets({ line_id: lineId }),
+      const [machinesRes, ticketsRes, mechRes] = await Promise.allSettled([
+        Api.listMachines(lineParam ? { line_id: lineParam } : {}),
+        Api.listTickets(lineParam ? { line_id: lineParam } : {}),
         Api.getActiveMechanics(),
       ]);
 
-      if (machinesRes.success && machinesRes.data) {
-        setMachines(machinesRes.data);
+      if (machinesRes.status === 'fulfilled' && machinesRes.value.success && machinesRes.value.data) {
+        setMachines(machinesRes.value.data);
+      } else if (machinesRes.status === 'rejected') {
+        console.error('Machines fetch error:', machinesRes.reason);
       }
-      if (ticketsRes.success && ticketsRes.data) {
-        // filter out closed / operational tickets
-        const open = ticketsRes.data.filter(
+
+      if (ticketsRes.status === 'fulfilled' && ticketsRes.value.success && ticketsRes.value.data) {
+        const open = ticketsRes.value.data.filter(
           (t) => t.status !== 'OPERATIONAL' && t.status !== 'CLOSED'
         );
         setActiveTickets(open);
+      } else if (ticketsRes.status === 'rejected') {
+        console.error('Tickets fetch error:', ticketsRes.reason);
       }
-      if (mechRes.success && mechRes.data) {
-        setMechanics(mechRes.data);
-        if (mechRes.data.length > 0) setSelectedMechanicId(String(mechRes.data[0].id));
+
+      if (mechRes.status === 'fulfilled' && mechRes.value.success && mechRes.value.data) {
+        setMechanics(mechRes.value.data);
+        if (mechRes.value.data.length > 0 && !selectedMechanicId) {
+          setSelectedMechanicId(String(mechRes.value.data[0].id));
+        }
+      } else if (mechRes.status === 'rejected') {
+        console.error('Mechanics fetch error:', mechRes.reason);
+      }
+
+      // If all 3 failed completely
+      if (
+        machinesRes.status === 'rejected' &&
+        ticketsRes.status === 'rejected' &&
+        mechRes.status === 'rejected'
+      ) {
+        toast.error('Failed to load line station data. Please check backend connection.');
       }
     } catch (err: any) {
-      toast.error('Failed to load line station data.');
+      toast.error('Unexpected error loading line station.');
+      console.error(err);
     } finally {
       setLoading(false);
     }
@@ -73,7 +120,7 @@ export const LineDashboard: React.FC = () => {
 
   useEffect(() => {
     fetchLineData();
-  }, [user]);
+  }, [selectedLineId, user]);
 
   const handleQRScanSuccess = async (qrHash: string) => {
     try {
@@ -106,6 +153,7 @@ export const LineDashboard: React.FC = () => {
     }
   };
 
+  const currentLineObj = availableLines.find((l) => l.id === selectedLineId) || user?.line;
   const totalLineMachines = machines.length;
   const breakdownCount = machines.filter((m) => m.status === 'BREAKDOWN').length;
   const operationalCount = machines.filter((m) => m.status === 'OPERATIONAL').length;
@@ -117,10 +165,11 @@ export const LineDashboard: React.FC = () => {
       {/* Line Supervisor Station Header */}
       <div className="line-supervisor-banner">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px', flexWrap: 'wrap' }}>
             <span className="badge badge-amber">Line Supervisor Station</span>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-              {user?.line?.name || 'Production Line 01 (Alpha)'}
+            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Layers size={14} color="var(--primary)" />
+              {currentLineObj ? `${currentLineObj.name} (${currentLineObj.line_code})` : 'All Production Lines (Factory Overview)'}
             </span>
           </div>
           <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-primary)' }}>
@@ -128,9 +177,38 @@ export const LineDashboard: React.FC = () => {
           </h1>
         </div>
 
-        <div style={{ display: 'flex', gap: '12px' }}>
-          <button className="btn btn-secondary" onClick={fetchLineData} title="Refresh Line Data">
-            <RefreshCw size={16} />
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Station Line Filter Selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255, 255, 255, 0.05)', padding: '6px 12px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+            <Filter size={15} color="var(--text-secondary)" />
+            <select
+              className="form-select"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-primary)',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                padding: '2px 8px',
+                outline: 'none',
+              }}
+              value={selectedLineId}
+              onChange={(e) => setSelectedLineId(e.target.value ? Number(e.target.value) : '')}
+            >
+              <option value="" style={{ background: '#1e293b' }}>
+                All Production Lines
+              </option>
+              {availableLines.map((l) => (
+                <option key={l.id} value={l.id} style={{ background: '#1e293b' }}>
+                  {l.name} ({l.line_code})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <button className="btn btn-secondary" onClick={fetchLineData} title="Refresh Line Data" disabled={loading}>
+            <RefreshCw size={16} className={loading ? 'spin' : ''} />
           </button>
           <button
             className="btn btn-primary"
@@ -150,7 +228,7 @@ export const LineDashboard: React.FC = () => {
             <Cpu size={22} />
           </div>
           <div className="stat-content">
-            <div className="stat-value">{totalLineMachines}</div>
+            <div className="stat-value">{loading ? '...' : totalLineMachines}</div>
             <div className="stat-label">Total Assigned Line Machines</div>
           </div>
         </div>
@@ -164,7 +242,7 @@ export const LineDashboard: React.FC = () => {
           </div>
           <div className="stat-content">
             <div className="stat-value" style={{ color: 'var(--accent-rose)' }}>
-              {breakdownCount}
+              {loading ? '...' : breakdownCount}
             </div>
             <div className="stat-label">Active Breakdown Bottlenecks</div>
           </div>
@@ -179,7 +257,7 @@ export const LineDashboard: React.FC = () => {
           </div>
           <div className="stat-content">
             <div className="stat-value" style={{ color: 'var(--accent-emerald)' }}>
-              {availabilityPct}%
+              {loading ? '...' : `${availabilityPct}%`}
             </div>
             <div className="stat-label">Line Operational Efficiency</div>
           </div>
@@ -194,7 +272,7 @@ export const LineDashboard: React.FC = () => {
           </div>
           <div className="stat-content">
             <div className="stat-value" style={{ color: 'var(--accent-amber)' }}>
-              {activeTickets.length}
+              {loading ? '...' : activeTickets.length}
             </div>
             <div className="stat-label">Active Repair Tickets</div>
           </div>
@@ -293,7 +371,13 @@ export const LineDashboard: React.FC = () => {
                         className="btn btn-secondary btn-sm"
                         onClick={() => {
                           setTicketToAssign(t);
-                          if (t.mechanic_id) setSelectedMechanicId(String(t.mechanic_id));
+                          if (t.mechanic_id) {
+                            setSelectedMechanicId(String(t.mechanic_id));
+                          } else if (mechanics.length > 0) {
+                            setSelectedMechanicId(String(mechanics[0].id));
+                          } else {
+                            setSelectedMechanicId('');
+                          }
                           setAssignModalOpen(true);
                         }}
                       >
@@ -309,6 +393,7 @@ export const LineDashboard: React.FC = () => {
         )}
       </div>
 
+
       {/* Line Machine Quick Grid */}
       <div className="section-header" style={{ marginTop: '30px' }}>
         <div>
@@ -319,41 +404,51 @@ export const LineDashboard: React.FC = () => {
         </div>
       </div>
 
-      <div className="machine-grid">
-        {machines.map((m) => (
-          <div key={m.id} className="machine-card">
-            <div className="machine-card-header">
-              <div>
-                <div className="machine-code-badge">{m.machine_code}</div>
-                <div className="machine-name">{m.name}</div>
-              </div>
-              <span className={`status-pill status-${m.status.toLowerCase().replace(/_/g, '-')}`}>
-                {m.status}
-              </span>
-            </div>
-
-            <div className="machine-meta-grid">
-              <div>
-                <span className="meta-label">Model:</span> {m.model_number}
-              </div>
-              <div>
-                <span className="meta-label">Serial:</span> {m.serial_number}
-              </div>
-            </div>
-
-            <div className="machine-card-footer">
-              <button
-                className={`btn btn-sm ${m.status === 'BREAKDOWN' ? 'btn-danger' : 'btn-primary'}`}
-                style={{ width: '100%' }}
-                onClick={() => handleOpenManualBreakdown(m)}
-              >
-                <AlertTriangle size={14} />
-                <span>Report Breakdown / Service</span>
-              </button>
-            </div>
+      {machines.length === 0 && !loading ? (
+        <div className="card" style={{ padding: '40px', textAlign: 'center', color: 'var(--text-secondary)' }}>
+          <Cpu size={36} style={{ margin: '0 auto 10px auto', opacity: 0.5 }} />
+          <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>No Machines Found on this Line</div>
+          <div style={{ fontSize: '0.85rem', marginTop: '4px' }}>
+            Select another production line or register new machines in the Machinery Catalog.
           </div>
-        ))}
-      </div>
+        </div>
+      ) : (
+        <div className="machine-grid">
+          {machines.map((m) => (
+            <div key={m.id} className="machine-card">
+              <div className="machine-card-header">
+                <div>
+                  <div className="machine-code-badge">{m.machine_code}</div>
+                  <div className="machine-name">{m.name}</div>
+                </div>
+                <span className={`status-pill status-${m.status.toLowerCase().replace(/_/g, '-')}`}>
+                  {m.status}
+                </span>
+              </div>
+
+              <div className="machine-meta-grid">
+                <div>
+                  <span className="meta-label">Model:</span> {m.model_number}
+                </div>
+                <div>
+                  <span className="meta-label">Serial:</span> {m.serial_number}
+                </div>
+              </div>
+
+              <div className="machine-card-footer">
+                <button
+                  className={`btn btn-sm ${m.status === 'BREAKDOWN' ? 'btn-danger' : 'btn-primary'}`}
+                  style={{ width: '100%' }}
+                  onClick={() => handleOpenManualBreakdown(m)}
+                >
+                  <AlertTriangle size={14} />
+                  <span>Report Breakdown / Service</span>
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Modals */}
       <QRScannerModal
@@ -402,21 +497,75 @@ export const LineDashboard: React.FC = () => {
           </div>
 
           <div>
-            <label className="form-label">Select Active Mechanic</label>
-            <select
-              className="form-select"
-              value={selectedMechanicId}
-              onChange={(e) => setSelectedMechanicId(e.target.value)}
-            >
-              {mechanics.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.name} ({m.active_repairs_count ?? 0} active tickets)
-                </option>
-              ))}
-            </select>
+            <label className="form-label">Select Active Factory Mechanic</label>
+            {mechanics.length === 0 ? (
+              <div
+                style={{
+                  background: 'rgba(244, 63, 94, 0.1)',
+                  border: '1px solid rgba(244, 63, 94, 0.25)',
+                  padding: '12px',
+                  borderRadius: 'var(--radius-md)',
+                  color: 'var(--accent-rose-light)',
+                  fontSize: '0.85rem',
+                }}
+              >
+                No active mechanics found in the system registry. Please ensure mechanic accounts are registered and marked active.
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <select
+                  className="form-select"
+                  value={selectedMechanicId}
+                  onChange={(e) => setSelectedMechanicId(e.target.value)}
+                >
+                  {mechanics.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name} &bull; {m.line?.name || m.floor?.name || 'General Factory'} {m.phone ? `(${m.phone})` : ''} [{m.active_repairs_count ?? 0} active tickets]
+                    </option>
+                  ))}
+                </select>
+
+                <div
+                  style={{
+                    background: 'var(--bg-input)',
+                    borderRadius: 'var(--radius-md)',
+                    padding: '10px 14px',
+                    border: '1px solid var(--border-color)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                  }}
+                >
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Mechanic Workload & Contact Details
+                  </div>
+                  {(() => {
+                    const selectedMech = mechanics.find((m) => String(m.id) === selectedMechanicId);
+                    if (!selectedMech) return null;
+                    return (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
+                        <div>
+                          <strong style={{ color: 'var(--text-primary)' }}>{selectedMech.name}</strong>
+                          <span style={{ color: 'var(--text-secondary)', marginLeft: '8px', fontSize: '0.8rem' }}>
+                            {selectedMech.email} {selectedMech.phone ? `&bull; ${selectedMech.phone}` : ''}
+                          </span>
+                        </div>
+                        <span
+                          className={`badge ${(selectedMech.active_repairs_count || 0) > 2 ? 'badge-amber' : 'badge-emerald'}`}
+                          style={{ fontSize: '0.75rem' }}
+                        >
+                          {selectedMech.active_repairs_count || 0} active tickets
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </Modal>
     </div>
   );
 };
+

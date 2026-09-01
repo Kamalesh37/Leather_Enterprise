@@ -6,13 +6,16 @@ import {
   InventoryAuditLog,
   Line,
   Machine,
+  MachineTypeGroup,
   Part,
   RepairLog,
   Role,
   ServiceCatalogItem,
   User,
   Vendor,
+  WorkReport,
 } from '../types';
+
 
 const BASE_URL = '/api';
 
@@ -80,12 +83,27 @@ export const Api = {
   logout: () => request<any>('/auth/logout', { method: 'POST' }),
 
   switchRole: (role: Role) => request<{ user: User; token: string }>(`/auth/switch-role?role=${role}`),
+  switchUser: (userId: number) => request<{ user: User; token: string }>(`/auth/switch-role?user_id=${userId}`),
+
 
   // Organizational Hierarchy
   getHierarchyTree: () => request<Block[]>('/hierarchy'),
   getHierarchyOptions: () =>
     request<{ blocks: Block[]; floors: Floor[]; lines: Line[] }>('/hierarchy/options'),
   getHierarchySummary: () => request<any>('/hierarchy/summary'),
+  createBlock: (data: { name: string; code?: string; description?: string }) =>
+    request<Block>('/hierarchy/blocks', { method: 'POST', body: JSON.stringify(data) }),
+  updateBlock: (id: number, data: { name: string; code?: string; description?: string }) =>
+    request<Block>(`/hierarchy/blocks/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  createFloor: (data: { block_id: number; name: string; floor_number?: number }) =>
+    request<Floor>('/hierarchy/floors', { method: 'POST', body: JSON.stringify(data) }),
+  updateFloor: (id: number, data: { name: string; floor_number?: number; block_id?: number }) =>
+    request<Floor>(`/hierarchy/floors/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  createLine: (data: { floor_id: number; name: string; line_code?: string }) =>
+    request<Line>('/hierarchy/lines', { method: 'POST', body: JSON.stringify(data) }),
+  updateLine: (id: number, data: { name: string; line_code?: string; floor_id?: number }) =>
+    request<Line>(`/hierarchy/lines/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+
 
   // Crew Management & RBAC Matrix
   listCrew: (params: { role?: string; block_id?: number; floor_id?: number; line_id?: number; search?: string } = {}) => {
@@ -103,6 +121,7 @@ export const Api = {
     email: string;
     password: string;
     role: Role;
+    manager_id?: number | null;
     block_id?: number | null;
     floor_id?: number | null;
     line_id?: number | null;
@@ -121,6 +140,8 @@ export const Api = {
     }),
 
   getActiveMechanics: () => request<User[]>('/crew/mechanics/active'),
+  getReportingHierarchy: () => request<any>('/crew/hierarchy-chain'),
+
 
   // Vendors
   listVendors: (params: { search?: string; category?: string } = {}) => {
@@ -155,8 +176,47 @@ export const Api = {
     return request<Machine[]>(`/machines?${q.toString()}`);
   },
 
+  listGroupedMachines: (params: {
+    block_id?: number;
+    floor_id?: number;
+    line_id?: number;
+    status?: string;
+    vendor_id?: number;
+  } = {}) => {
+    const q = new URLSearchParams();
+    if (params.block_id) q.append('block_id', String(params.block_id));
+    if (params.floor_id) q.append('floor_id', String(params.floor_id));
+    if (params.line_id) q.append('line_id', String(params.line_id));
+    if (params.status) q.append('status', params.status);
+    if (params.vendor_id) q.append('vendor_id', String(params.vendor_id));
+    return request<MachineTypeGroup[]>(`/machines/grouped-types?${q.toString()}`);
+  },
+
   storeMachine: (payload: any) =>
-    request<Machine>('/machines', {
+    request<{
+      data: Machine;
+      machines?: Machine[];
+      created_count?: number;
+      message: string;
+    }>('/machines', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  addMachineQuantity: (payload: {
+    model_number?: string;
+    machine_id?: number;
+    quantity: number;
+    line_id?: number | null;
+    floor_id?: number | null;
+    block_id?: number | null;
+  }) =>
+    request<{
+      message: string;
+      data: Machine;
+      machines: Machine[];
+      created_count: number;
+    }>('/machines/add-quantity', {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
@@ -307,5 +367,39 @@ export const Api = {
   getInventoryStats: () => request<any>('/inventory/stats'),
 
   // Analytics
-  getAnalyticsDashboard: () => request<AnalyticsData>('/analytics/dashboard'),
+  getAnalyticsDashboard: (params: {
+    block_id?: number;
+    floor_id?: number;
+    line_id?: number;
+    time_frame?: string;
+  } = {}) => {
+    const q = new URLSearchParams();
+    if (params.block_id) q.append('block_id', String(params.block_id));
+    if (params.floor_id) q.append('floor_id', String(params.floor_id));
+    if (params.line_id) q.append('line_id', String(params.line_id));
+    if (params.time_frame) q.append('time_frame', params.time_frame);
+    const queryString = q.toString() ? `?${q.toString()}` : '';
+    return request<AnalyticsData>(`/analytics/dashboard${queryString}`);
+  },
+
+  // Work Done Reporting System to Higher Officials
+  submitWorkReport: (payload: any) =>
+    request<WorkReport>('/work-reports', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  getMyWorkReports: () => request<WorkReport[]>('/work-reports/my-submissions'),
+
+  getSubordinateWorkReports: () => request<WorkReport[]>('/work-reports/subordinate-inbox'),
+
+  acknowledgeWorkReport: (id: number, payload: { status?: string; acknowledgement_notes?: string } = {}) =>
+    request<WorkReport>(`/work-reports/${id}/acknowledge`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
+  getWorkReportTemplates: () => request<any>('/work-reports/templates'),
 };
+
+

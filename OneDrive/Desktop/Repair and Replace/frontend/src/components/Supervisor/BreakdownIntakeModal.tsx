@@ -40,14 +40,18 @@ export const BreakdownIntakeModal: React.FC<BreakdownIntakeModalProps> = ({
 
   useEffect(() => {
     if (isOpen) {
-      Api.getActiveMechanics().then((res) => {
-        if (res.success && res.data) {
-          setMechanics(res.data);
-          if (res.data.length > 0) {
-            setMechanicId(String(res.data[0].id));
+      Api.getActiveMechanics()
+        .then((res) => {
+          if (res.success && res.data) {
+            setMechanics(res.data);
+            if (res.data.length > 0) {
+              setMechanicId(String(res.data[0].id));
+            }
           }
-        }
-      });
+        })
+        .catch((err) => {
+          console.warn('Failed to load active mechanics for modal:', err);
+        });
       setReportedIssue('');
       setTicketType('BREAKDOWN_REPAIR');
       setPriority('HIGH');

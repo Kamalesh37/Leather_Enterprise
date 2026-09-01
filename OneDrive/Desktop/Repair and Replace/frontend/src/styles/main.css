@@ -1079,7 +1079,27 @@ body::before {
 }
 
 .modal-dialog.modal-lg {
-  max-width: 900px;
+  max-width: 960px;
+}
+
+.modal-dialog.modal-xl {
+  max-width: 1360px;
+  width: 95vw;
+  max-height: 92vh;
+}
+
+.modal-dialog.modal-full {
+  max-width: 1680px;
+  width: 98vw;
+  max-height: 95vh;
+}
+
+.modal-dialog.modal-maximized {
+  max-width: 98vw !important;
+  width: 98vw !important;
+  height: 96vh !important;
+  max-height: 96vh !important;
+  border-radius: var(--radius-lg);
 }
 
 @keyframes modalPop {
@@ -1322,3 +1342,53 @@ body::before {
     border: none !important;
   }
 }
+
+/* ==========================================================================
+   INTERACTIVE DRILLDOWNS & ANIMATIONS
+   ========================================================================== */
+
+.clickable-card {
+  position: relative;
+  user-select: none;
+}
+
+.clickable-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(99, 102, 241, 0.6);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 0 20px rgba(99, 102, 241, 0.25);
+}
+
+.clickable-card:active {
+  transform: translateY(-1px);
+}
+
+.table-row-hover {
+  transition: background-color var(--transition-fast);
+}
+
+.table-row-hover:hover td {
+  background: rgba(99, 102, 241, 0.08) !important;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+

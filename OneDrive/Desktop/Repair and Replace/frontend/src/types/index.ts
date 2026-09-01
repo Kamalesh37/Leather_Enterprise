@@ -7,6 +7,19 @@ export type Role =
   | 'tech_lead'
   | 'spare_head';
 
+export type NavTab =
+  | 'dashboard'
+  | 'crew'
+  | 'machines'
+  | 'vendors'
+  | 'supervisor'
+  | 'mechanic'
+  | 'tech_lead'
+  | 'spare_head'
+  | 'inventory'
+  | 'audit_ledger';
+
+
 export type TicketStatus =
   | 'REPORTED'
   | 'DIAGNOSING'
@@ -39,22 +52,45 @@ export interface UserPermission {
   can_view_analytics: boolean;
 }
 
+export interface ReportingChainNode {
+  id: number;
+  name: string;
+  role: Role;
+  email: string;
+  phone?: string | null;
+  designation: string;
+  block?: string | null;
+  floor?: string | null;
+  line?: string | null;
+}
+
 export interface User {
   id: number;
   name: string;
   email: string;
   role: Role;
+  manager_id?: number | null;
   block_id: number | null;
   floor_id: number | null;
   line_id: number | null;
   phone: string | null;
   status: 'active' | 'inactive';
+  manager?: {
+    id: number;
+    name: string;
+    role: Role;
+    email: string;
+    phone?: string | null;
+  } | null;
+  reporting_chain?: ReportingChainNode[];
+  higher_official?: ReportingChainNode | null;
   permission?: UserPermission;
   block?: Block;
   floor?: Floor;
   line?: Line;
   active_repairs_count?: number;
 }
+
 
 export interface Block {
   id: number;
@@ -127,6 +163,39 @@ export interface Machine {
   line?: Line;
   open_tickets_count?: number;
   repair_logs?: RepairLog[];
+  service_stats?: MachineServiceStats;
+}
+
+export interface AuthorityHandledRecord {
+  user: User;
+  role: Role;
+  action_types: string[];
+  interventions_count: number;
+  last_activity_at: string;
+}
+
+export interface MachineServiceStats {
+  total_services_done: number;
+  completed_services: number;
+  open_services: number;
+  total_downtime_minutes: number;
+  unique_authorities_count: number;
+  authorities_roster: AuthorityHandledRecord[];
+}
+
+export interface MachineTypeGroup {
+  type_key: string;
+  name: string;
+  model_number: string;
+  vendor?: Vendor | null;
+  vendor_id?: number | null;
+  specifications?: MachineSpecifications | null;
+  image_url?: string | null;
+  total_quantity: number;
+  operational_count: number;
+  breakdown_count: number;
+  maintenance_count: number;
+  machines: Machine[];
 }
 
 export interface ServiceCatalogItem {
@@ -210,11 +279,57 @@ export interface InventoryAuditLog {
   user?: User;
 }
 
+export interface BreakdownMachineItem {
+  id: number;
+  machine_code: string;
+  name: string;
+  model_number: string;
+  serial_number: string;
+  status: MachineStatus;
+  image_url: string | null;
+  specifications: MachineSpecifications | null;
+  vendor?: Vendor;
+  block?: Block;
+  floor?: Floor;
+  line?: Line;
+  active_ticket?: {
+    id: number;
+    ticket_number: string;
+    ticket_type: TicketType;
+    priority: Priority;
+    status: TicketStatus;
+    reported_issue: string;
+    diagnosis_notes: string | null;
+    breakdown_start_time: string | null;
+    elapsed_downtime_minutes: number;
+    reporter?: { id: number; name: string; role: Role } | null;
+    mechanic?: { id: number; name: string; role: Role; phone: string | null } | null;
+    spare_requests?: RepairSpareRequest[];
+  } | null;
+}
+
+export interface OfficialScopeInfo {
+  official_name: string;
+  official_role: Role;
+  official_title: string;
+  scope_level: 'enterprise' | 'block' | 'floor' | 'line' | 'engineering' | 'warehouse' | 'technician' | 'general';
+  scope_name: string;
+  location_context?: string;
+  is_restricted: boolean;
+  assigned_block_id?: number | null;
+  assigned_floor_id?: number | null;
+  assigned_line_id?: number | null;
+}
+
 export interface AnalyticsData {
+  scope_info?: OfficialScopeInfo;
   overview: {
     total_machines: number;
     operational_count: number;
     breakdown_count: number;
+    maintenance_count?: number;
+    decommissioned_count?: number;
+    active_bottlenecks?: number;
     availability_pct: number;
     total_tickets: number;
     open_tickets: number;
@@ -222,6 +337,8 @@ export interface AnalyticsData {
     mttr_minutes: number;
     total_downtime_minutes: number;
   };
+  breakdown_machines?: BreakdownMachineItem[];
+  status_distribution?: Record<string, number>;
   tickets_by_status: Record<string, number>;
   line_metrics: Array<{
     line_id: number;
@@ -230,15 +347,65 @@ export interface AnalyticsData {
     floor_name: string;
     block_name: string;
     total_machines: number;
+    operational_machines?: number;
     open_breakdowns: number;
     total_downtime_minutes: number;
+    avg_mttr_minutes?: number;
   }>;
   failures_by_model: Array<{
     machine_name: string;
     model_number: string;
     ticket_count: number;
     downtime_sum: number;
+    affected_machines_count?: number;
   }>;
+  recent_tickets?: RepairLog[];
+  tech_lead_metrics?: {
+    pending_diagnostic_approvals: number;
+    pending_sign_offs: number;
+    avg_approval_turnaround_min: number;
+    root_cause_breakdown: Array<{ category: string; count: number; pct: number }>;
+  } | null;
+  spare_head_metrics?: {
+    total_part_skus: number;
+    low_stock_parts_count: number;
+    pending_dispatches_count: number;
+    inventory_valuation: number;
+    dispatch_sla_compliance_pct: number;
+  } | null;
+  mechanic_metrics?: {
+    my_active_repairs: number;
+    my_completed_repairs: number;
+    my_avg_repair_time_min: number;
+    first_time_fix_rate_pct: number;
+  } | null;
+}
+
+export interface WorkReportTask {
+  title: string;
+  status: 'completed' | 'in_progress' | 'pending';
+  details?: string;
+}
+
+export interface WorkReport {
+  id: number;
+  user_id: number;
+  manager_id: number | null;
+  report_type: 'daily_work_done' | 'shift_handover' | 'incident_escalation' | 'maintenance_summary' | 'line_performance' | 'floor_operations';
+  title: string;
+  shift: 'morning' | 'evening' | 'night' | 'general';
+  summary: string;
+  tasks_completed?: WorkReportTask[];
+  metrics?: Record<string, any>;
+  blockers_and_delays?: string | null;
+  recommendations?: string | null;
+  status: 'submitted' | 'reviewed' | 'acknowledged';
+  acknowledgement_notes?: string | null;
+  acknowledged_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  user?: User;
+  manager?: User | null;
 }
 
 export interface ApiResponse<T> {
@@ -246,4 +413,7 @@ export interface ApiResponse<T> {
   message?: string;
   data: T;
   error?: string;
+  meta?: any;
 }
+
+

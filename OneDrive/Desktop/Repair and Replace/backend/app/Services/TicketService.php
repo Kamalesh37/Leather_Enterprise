@@ -2,83 +2,98 @@
 
 namespace App\Services;
 
-use App\Enums\TicketStatus;
-use App\Models\ServiceTicket;
+use App\Models\RepairLog;
 
 class TicketService
 {
-    public function getTicketById(string $ticketId): array
+    public function getTicketById(int|string $ticketId): array
     {
-        $ticket = ServiceTicket::where('ticket_id', $ticketId)
-            ->with(['product', 'partsUsed.part', 'auditLogs.part'])
-            ->first();
+        $ticket = is_numeric($ticketId)
+            ? RepairLog::with(['machine.vendor', 'machine.line', 'reporter', 'mechanic', 'techLead', 'spareHead', 'spareRequests.part', 'auditLogs.part'])->find((int) $ticketId)
+            : RepairLog::with(['machine.vendor', 'machine.line', 'reporter', 'mechanic', 'techLead', 'spareHead', 'spareRequests.part', 'auditLogs.part'])->where('ticket_number', $ticketId)->first();
 
         if (!$ticket) {
-            throw new \Exception('Service ticket not found', 404);
+            throw new \Exception('Repair ticket not found', 404);
         }
 
-        $totalCount = $ticket->partsUsed->sum('quantity_used');
-        $totalCost = $ticket->partsUsed->sum(fn($p) => $p->quantity_used * (float) $p->unit_price_at_repair);
+        $totalPartsCount = $ticket->spareRequests->sum('dispatched_quantity');
+        $totalPartsCost = $ticket->spareRequests->sum(fn($p) => $p->dispatched_quantity * (float) ($p->unit_cost_at_dispatch ?? $p->part->unit_cost ?? 0));
 
-        $parts = $ticket->partsUsed->map(function ($pu) {
+        $parts = $ticket->spareRequests->map(function ($req) {
             return [
-                'usage_id' => $pu->id,
-                'part_id' => $pu->part_id,
-                'part_number' => $pu->part->part_number ?? '',
-                'name' => $pu->part->name ?? '',
-                'category' => $pu->part->category ?? '',
-                'location_bin' => $pu->part->location_bin ?? '',
-                'quantity_used' => $pu->quantity_used,
-                'unit_price_at_repair' => (float) $pu->unit_price_at_repair,
-                'total_price' => $pu->quantity_used * (float) $pu->unit_price_at_repair,
-                'created_at' => $pu->created_at->toISOString(),
+                'request_id' => $req->id,
+                'part_id' => $req->part_id,
+                'part_number' => $req->part->part_number ?? '',
+                'name' => $req->part->name ?? '',
+                'category' => $req->part->category ?? '',
+                'location_bin' => $req->part->location_bin ?? '',
+                'requested_quantity' => $req->requested_quantity,
+                'approved_quantity' => $req->approved_quantity,
+                'dispatched_quantity' => $req->dispatched_quantity,
+                'unit_cost' => (float) ($req->unit_cost_at_dispatch ?? $req->part->unit_cost ?? 0),
+                'total_cost' => $req->dispatched_quantity * (float) ($req->unit_cost_at_dispatch ?? $req->part->unit_cost ?? 0),
+                'status' => $req->status,
+                'created_at' => $req->created_at?->toISOString(),
             ];
         });
 
         return [
-            'ticket_id' => $ticket->ticket_id,
-            'product_id' => $ticket->product_id,
-            'service_type' => $ticket->service_type->value,
-            'status' => $ticket->status->value,
+            'id' => $ticket->id,
+            'ticket_number' => $ticket->ticket_number,
+            'machine_id' => $ticket->machine_id,
+            'machine' => $ticket->machine,
+            'ticket_type' => $ticket->ticket_type,
+            'priority' => $ticket->priority,
+            'status' => $ticket->status,
+            'reported_issue' => $ticket->reported_issue,
             'diagnosis_notes' => $ticket->diagnosis_notes,
-            'technician_id' => $ticket->technician_id,
-            'created_at' => $ticket->created_at->toISOString(),
-            'updated_at' => $ticket->updated_at->toISOString(),
-            'product' => $ticket->product,
+            'breakdown_start_time' => $ticket->breakdown_start_time?->toISOString(),
+            'breakdown_end_time' => $ticket->breakdown_end_time?->toISOString(),
+            'total_downtime_minutes' => $ticket->total_downtime_minutes,
+            'reporter' => $ticket->reporter,
+            'mechanic' => $ticket->mechanic,
+            'tech_lead' => $ticket->techLead,
+            'spare_head' => $ticket->spareHead,
+            'created_at' => $ticket->created_at?->toISOString(),
+            'updated_at' => $ticket->updated_at?->toISOString(),
             'bill_of_materials' => [
-                'total_parts_count' => $totalCount,
-                'total_parts_cost' => (float) $totalCost,
+                'total_parts_count' => $totalPartsCount,
+                'total_parts_cost' => (float) $totalPartsCost,
                 'parts' => $parts,
             ],
             'audit_logs' => $ticket->auditLogs,
         ];
     }
 
-    public function updateDiagnosis(string $ticketId, string $notes): array
+    public function updateDiagnosis(int|string $ticketId, string $notes): array
     {
-        $ticket = ServiceTicket::where('ticket_id', $ticketId)->first();
+        $ticket = is_numeric($ticketId)
+            ? RepairLog::find((int) $ticketId)
+            : RepairLog::where('ticket_number', $ticketId)->first();
+
         if (!$ticket) {
-            throw new \Exception('Service ticket not found', 404);
+            throw new \Exception('Repair ticket not found', 404);
         }
 
         $ticket->diagnosis_notes = $notes;
-        $ticket->updated_at = now();
         $ticket->save();
 
-        return $this->getTicketById($ticketId);
+        return $this->getTicketById($ticket->id);
     }
 
-    public function updateStatus(string $ticketId, string $status): array
+    public function updateStatus(int|string $ticketId, string $status): array
     {
-        $ticket = ServiceTicket::where('ticket_id', $ticketId)->first();
+        $ticket = is_numeric($ticketId)
+            ? RepairLog::find((int) $ticketId)
+            : RepairLog::where('ticket_number', $ticketId)->first();
+
         if (!$ticket) {
-            throw new \Exception('Service ticket not found', 404);
+            throw new \Exception('Repair ticket not found', 404);
         }
 
-        $ticket->status = TicketStatus::from($status);
-        $ticket->updated_at = now();
+        $ticket->status = $status;
         $ticket->save();
 
-        return $this->getTicketById($ticketId);
+        return $this->getTicketById($ticket->id);
     }
 }

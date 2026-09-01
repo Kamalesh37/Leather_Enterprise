@@ -18,11 +18,13 @@ class StoreCrewRequest extends FormRequest
             'email' => 'required|email|unique:users,email',
             'password' => 'required|string|min:6',
             'role' => 'required|string|in:admin,block_manager,floor_manager,line_supervisor,mechanic,tech_lead,spare_head',
+            'manager_id' => 'nullable|exists:users,id',
             'block_id' => 'nullable|exists:blocks,id',
             'floor_id' => 'nullable|exists:floors,id',
             'line_id' => 'nullable|exists:lines,id',
             'phone' => 'nullable|string|max:50',
             'status' => 'nullable|string|in:active,inactive',
+
 
             // Permission matrix
             'permissions' => 'nullable|array',

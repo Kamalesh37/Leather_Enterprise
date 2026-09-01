@@ -14,7 +14,9 @@ import {
   CheckCircle,
   FileText,
   Tag,
+  X,
 } from 'lucide-react';
+
 
 export const VendorCatalog: React.FC = () => {
   const toast = useToast();
@@ -33,10 +35,10 @@ export const VendorCatalog: React.FC = () => {
   const [categoriesInput, setCategoriesInput] = useState<string>('Heavy Stitching, Hydraulic Presses');
   const [submitting, setSubmitting] = useState<boolean>(false);
 
-  const fetchVendors = async () => {
+  const fetchVendors = async (searchQuery: string = search) => {
     setLoading(true);
     try {
-      const res = await Api.listVendors({ search: search || undefined });
+      const res = await Api.listVendors({ search: searchQuery || undefined });
       if (res.success && res.data) {
         setVendors(res.data);
       }
@@ -48,8 +50,35 @@ export const VendorCatalog: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchVendors();
-  }, []);
+    const timer = setTimeout(() => {
+      fetchVendors(search);
+    }, 220);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const highlightMatch = (text: string, query: string) => {
+    if (!query.trim() || query.length < 2) return text;
+    const regex = new RegExp(`(${query.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')})`, 'gi');
+    const parts = text.split(regex);
+    return parts.map((part, i) =>
+      part.toLowerCase() === query.toLowerCase() ? (
+        <mark
+          key={i}
+          style={{
+            background: 'rgba(99, 102, 241, 0.45)',
+            color: '#fff',
+            borderRadius: '2px',
+            padding: '0 2px',
+          }}
+        >
+          {part}
+        </mark>
+      ) : (
+        part
+      )
+    );
+  };
+
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -110,6 +139,62 @@ export const VendorCatalog: React.FC = () => {
         </button>
       </div>
 
+      {/* Live Search Bar */}
+      <div className="card" style={{ padding: '16px', marginBottom: '20px' }}>
+        <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <div className="input-group" style={{ flex: '1 1 280px', position: 'relative' }}>
+            <Search size={16} className="input-icon" />
+            <input
+              type="text"
+              className="form-input"
+              style={{ paddingRight: search ? '36px' : '14px' }}
+              placeholder="Search by vendor name, contact person, or email..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            {search && (
+              <button
+                type="button"
+                onClick={() => setSearch('')}
+                style={{
+                  position: 'absolute',
+                  right: '10px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-muted)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                }}
+                title="Clear search"
+              >
+                <X size={15} />
+              </button>
+            )}
+          </div>
+
+          {search && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => setSearch('')}
+            >
+              Reset Search
+            </button>
+          )}
+        </div>
+
+        {search && (
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border-color)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+            <span>Available Vendors: <strong style={{ color: 'var(--text-primary)' }}>{vendors.length}</strong></span>
+            <span className="badge badge-primary">Search: "{search}"</span>
+          </div>
+        )}
+      </div>
+
       {/* Vendors Grid */}
       {loading ? (
         <div className="card" style={{ padding: '40px', textAlign: 'center' }}>
@@ -121,14 +206,15 @@ export const VendorCatalog: React.FC = () => {
             <div key={v.id} className="card vendor-card">
               <div className="vendor-card-header">
                 <div>
-                  <h3 className="vendor-name">{v.name}</h3>
-                  <div className="vendor-contact-person">{v.contact_name || 'Authorized Technical Rep'}</div>
+                  <h3 className="vendor-name">{highlightMatch(v.name, search)}</h3>
+                  <div className="vendor-contact-person">{highlightMatch(v.contact_name || 'Authorized Technical Rep', search)}</div>
                 </div>
                 <div className="vendor-rating">
                   <Star size={15} fill="#f59e0b" color="#f59e0b" />
                   <span>{v.rating || 4.8}</span>
                 </div>
               </div>
+
 
               <div className="vendor-details-list">
                 {v.email && (
