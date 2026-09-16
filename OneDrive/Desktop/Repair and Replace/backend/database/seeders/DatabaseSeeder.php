@@ -24,46 +24,65 @@ class DatabaseSeeder extends Seeder
     {
         // 1. Seed Hierarchy (Block -> Floor -> Line)
         $blockA = Block::create([
-            'name' => 'Alpha Leather Tannery & Complex',
-            'code' => 'BLK-ALPHA',
-            'description' => 'Main manufacturing and leather fabrication complex housing cutting, skiving, stitching, and finishing units.',
+            'name' => 'Block A',
+            'code' => 'Block A',
+            'description' => 'Main leather fabrication complex housing cutting, skiving, stitching, and finishing units.',
+        ]);
+
+        $blockB = Block::create([
+            'name' => 'Block B',
+            'code' => 'Block B',
+            'description' => 'Secondary leather processing and high-precision assembly unit.',
         ]);
 
         $floor1 = Floor::create([
             'block_id' => $blockA->id,
-            'name' => 'Level 1: Cutting, Skiving & Stamping',
+            'name' => 'Floor 1',
             'floor_number' => 1,
         ]);
 
         $floor2 = Floor::create([
             'block_id' => $blockA->id,
-            'name' => 'Level 2: High-Precision Stitching & Assembly',
+            'name' => 'Floor 2',
             'floor_number' => 2,
+        ]);
+
+        $floor3 = Floor::create([
+            'block_id' => $blockA->id,
+            'name' => 'Floor 3',
+            'floor_number' => 3,
         ]);
 
         $line1 = Line::create([
             'floor_id' => $floor1->id,
-            'name' => 'Shoe Upper Cutting Line 01',
-            'line_code' => 'LINE-CUT-01',
+            'name' => 'Line 1',
+            'line_code' => 'Line 1',
         ]);
 
         $line2 = Line::create([
             'floor_id' => $floor1->id,
-            'name' => 'Luxury Handbag Preparation Line 02',
-            'line_code' => 'LINE-BAG-02',
+            'name' => 'Line 2',
+            'line_code' => 'Line 2',
         ]);
 
         $line3 = Line::create([
             'floor_id' => $floor2->id,
-            'name' => 'Belt & Heavy Strap Stitching Line 03',
-            'line_code' => 'LINE-STITCH-03',
+            'name' => 'Line 3',
+            'line_code' => 'Line 3',
         ]);
 
         $line4 = Line::create([
             'floor_id' => $floor2->id,
-            'name' => 'Automotive Leather Upholstery Line 04',
-            'line_code' => 'LINE-AUTO-04',
+            'name' => 'Line 4',
+            'line_code' => 'Line 4',
         ]);
+
+        $line5 = Line::create([
+            'floor_id' => $floor3->id,
+            'name' => 'Line 5',
+            'line_code' => 'Line 5',
+        ]);
+
 
         // 2. Seed Users across all 7 Roles
         $usersData = [
@@ -303,6 +322,7 @@ class DatabaseSeeder extends Seeder
                 'floor_id' => $floor2->id,
                 'line_id' => $line3->id,
                 'qr_hash' => 'QR-LM-DA867-001-ALPHA',
+                'image_url' => '/assets/machines/stitcher.jpg',
                 'status' => Machine::STATUS_OPERATIONAL,
                 'specs' => [
                     'motor_specs' => '750W Direct-Drive Integrated Servo Motor (230V / 50Hz)',
@@ -324,6 +344,7 @@ class DatabaseSeeder extends Seeder
                 'floor_id' => $floor1->id,
                 'line_id' => $line1->id,
                 'qr_hash' => 'QR-LM-ATOM888-001-ALPHA',
+                'image_url' => '/assets/machines/cutter.jpg',
                 'status' => Machine::STATUS_BREAKDOWN,
                 'specs' => [
                     'motor_specs' => 'Dual 3.5 kW Brushless Oscillating Blade Servo Drives',
@@ -345,6 +366,7 @@ class DatabaseSeeder extends Seeder
                 'floor_id' => $floor1->id,
                 'line_id' => $line2->id,
                 'qr_hash' => 'QR-LM-FORT50-001-ALPHA',
+                'image_url' => '/assets/machines/skiver.jpg',
                 'status' => Machine::STATUS_UNDER_MAINTENANCE,
                 'specs' => [
                     'motor_specs' => '0.75 kW Variable Speed Drive Motor with Electronic Foot Pedal',
@@ -366,6 +388,7 @@ class DatabaseSeeder extends Seeder
                 'floor_id' => $floor1->id,
                 'line_id' => $line1->id,
                 'qr_hash' => 'QR-LM-CAMC420-001-ALPHA',
+                'image_url' => '/assets/machines/skiver.jpg',
                 'status' => Machine::STATUS_OPERATIONAL,
                 'specs' => [
                     'motor_specs' => '2.2 kW High-Torque Main Spindle Motor',
@@ -387,6 +410,7 @@ class DatabaseSeeder extends Seeder
                 'floor_id' => $floor1->id,
                 'line_id' => $line2->id,
                 'qr_hash' => 'QR-LM-TORITP40-001-ALPHA',
+                'image_url' => '/assets/machines/press.jpg',
                 'status' => Machine::STATUS_OPERATIONAL,
                 'specs' => [
                     'motor_specs' => '5.5 kW Hydraulic Pump Motor',
@@ -408,6 +432,7 @@ class DatabaseSeeder extends Seeder
                 'floor_id' => $floor2->id,
                 'line_id' => $line4->id,
                 'qr_hash' => 'QR-LM-DA669-001-ALPHA',
+                'image_url' => '/assets/machines/stitcher.jpg',
                 'status' => Machine::STATUS_OPERATIONAL,
                 'specs' => [
                     'motor_specs' => '550W Mini-Stop Energy Saving DC Servo Motor',
@@ -433,6 +458,7 @@ class DatabaseSeeder extends Seeder
                 'floor_id' => $m['floor_id'],
                 'line_id' => $m['line_id'],
                 'qr_code_hash' => $m['qr_hash'],
+                'image_url' => $m['image_url'],
                 'specifications' => $m['specs'],
                 'status' => $m['status'],
                 'installed_at' => now()->subMonths(6),

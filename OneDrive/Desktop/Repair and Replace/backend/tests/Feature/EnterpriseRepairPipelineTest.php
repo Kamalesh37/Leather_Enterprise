@@ -208,4 +208,31 @@ class EnterpriseRepairPipelineTest extends TestCase
         $this->assertEquals(Machine::STATUS_OPERATIONAL, $updatedMachine->status);
         $this->assertNotNull(RepairLog::find($ticketId)->total_downtime_minutes);
     }
+
+    public function test_work_report_templates_for_roles(): void
+    {
+        $mechanic = User::where('role', User::ROLE_MECHANIC)->first();
+        $token = $mechanic->createToken('test')->plainTextToken;
+
+        $response = $this->withHeader('Authorization', "Bearer {$token}")
+            ->getJson('/api/work-reports/templates');
+
+        $response->assertStatus(200)
+            ->assertJsonPath('success', true)
+            ->assertJsonStructure([
+                'data' => [
+                    'title',
+                    'shift',
+                    'report_type',
+                    'tasks_completed',
+                    'metrics' => [
+                        'repairs_completed',
+                        'machines_serviced',
+                        'active_backlog',
+                        'avg_repair_time_min',
+                    ],
+                ],
+            ]);
+    }
 }
+

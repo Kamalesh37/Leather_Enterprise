@@ -264,7 +264,7 @@ class RepairTicketController extends Controller
 
         $endTime = now();
         $startTime = $ticket->breakdown_start_time ? Carbon::parse($ticket->breakdown_start_time) : $ticket->created_at;
-        $totalDowntimeMinutes = max(1, $startTime->diffInMinutes($endTime));
+        $totalDowntimeMinutes = (int) max(1, round($startTime->diffInMinutes($endTime)));
 
         DB::transaction(function () use ($ticket, $user, $endTime, $totalDowntimeMinutes) {
             $ticket->tech_lead_id = $user ? $user->id : $ticket->tech_lead_id;

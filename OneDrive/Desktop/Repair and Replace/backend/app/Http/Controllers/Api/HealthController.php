@@ -37,6 +37,7 @@ class HealthController extends Controller
                 'database' => $dbStatus,
                 'driver' => $driverDisplay,
                 'database_name' => $dbName,
+                'connection' => strtoupper(config('database.default')),
                 'framework' => 'Laravel 12 (PHP ' . PHP_VERSION . ')',
             ],
         ]);

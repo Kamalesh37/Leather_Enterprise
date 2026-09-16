@@ -28,8 +28,10 @@ class HierarchyController extends Controller
         ]);
     }
 
-    public function options(): JsonResponse
+    public function options(Request $request): JsonResponse
     {
+        $user = auth('sanctum')->user() ?? $request->user();
+
         $blocks = Block::select('id', 'name', 'code', 'description')->get();
         $floors = Floor::select('id', 'block_id', 'name', 'floor_number')->with('block:id,name,code')->get();
         $lines = Line::select('id', 'floor_id', 'name', 'line_code')->with('floor.block:id,name,code')->get();
@@ -40,6 +42,12 @@ class HierarchyController extends Controller
                 'blocks' => $blocks,
                 'floors' => $floors,
                 'lines' => $lines,
+                'user_scope' => $user ? [
+                    'role' => $user->role,
+                    'block_id' => $user->block_id,
+                    'floor_id' => $user->floor_id,
+                    'line_id' => $user->line_id,
+                ] : null,
             ],
         ]);
     }
@@ -66,15 +74,19 @@ class HierarchyController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'code' => 'required|string|max:50|unique:blocks,code',
-            'description' => 'nullable|string',
+            'code' => 'nullable|string|max:50',
+            'description' => 'nullable|string|max:500',
         ]);
 
-        $block = Block::create($validated);
+        $block = Block::create([
+            'name' => $validated['name'],
+            'code' => !empty($validated['code']) ? $validated['code'] : $validated['name'],
+            'description' => $validated['description'] ?? null,
+        ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Manufacturing Block created successfully.',
+            'message' => "Block {$block->name} created successfully.",
             'data' => $block->loadCount(['floors', 'machines', 'users']),
         ], 201);
     }
@@ -85,15 +97,19 @@ class HierarchyController extends Controller
 
         $validated = $request->validate([
             'name' => 'sometimes|required|string|max:255',
-            'code' => 'sometimes|required|string|max:50|unique:blocks,code,' . $id,
-            'description' => 'nullable|string',
+            'code' => 'nullable|string|max:50',
+            'description' => 'nullable|string|max:500',
         ]);
 
-        $block->update($validated);
+        $block->update(array_filter([
+            'name' => $validated['name'] ?? $block->name,
+            'code' => $validated['code'] ?? $block->code,
+            'description' => array_key_exists('description', $validated) ? $validated['description'] : $block->description,
+        ]));
 
         return response()->json([
             'success' => true,
-            'message' => 'Manufacturing Block updated successfully.',
+            'message' => "Block updated successfully.",
             'data' => $block->fresh()->loadCount(['floors', 'machines', 'users']),
         ]);
     }
@@ -139,14 +155,18 @@ class HierarchyController extends Controller
         $validated = $request->validate([
             'block_id' => 'required|exists:blocks,id',
             'name' => 'required|string|max:255',
-            'floor_number' => 'required|integer',
+            'floor_number' => 'nullable|integer',
         ]);
 
-        $floor = Floor::create($validated);
+        $floor = Floor::create([
+            'block_id' => $validated['block_id'],
+            'name' => $validated['name'],
+            'floor_number' => $validated['floor_number'] ?? 1,
+        ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Factory Floor created successfully.',
+            'message' => "Floor {$floor->name} created successfully.",
             'data' => $floor->load(['block:id,name,code'])->loadCount(['lines', 'machines', 'users']),
         ], 201);
     }
@@ -158,14 +178,18 @@ class HierarchyController extends Controller
         $validated = $request->validate([
             'block_id' => 'sometimes|required|exists:blocks,id',
             'name' => 'sometimes|required|string|max:255',
-            'floor_number' => 'sometimes|required|integer',
+            'floor_number' => 'nullable|integer',
         ]);
 
-        $floor->update($validated);
+        $floor->update(array_filter([
+            'name' => $validated['name'] ?? $floor->name,
+            'block_id' => $validated['block_id'] ?? $floor->block_id,
+            'floor_number' => $validated['floor_number'] ?? $floor->floor_number,
+        ]));
 
         return response()->json([
             'success' => true,
-            'message' => 'Factory Floor updated successfully.',
+            'message' => "Floor updated successfully.",
             'data' => $floor->fresh(['block:id,name,code'])->loadCount(['lines', 'machines', 'users']),
         ]);
     }
@@ -210,14 +234,18 @@ class HierarchyController extends Controller
         $validated = $request->validate([
             'floor_id' => 'required|exists:floors,id',
             'name' => 'required|string|max:255',
-            'line_code' => 'required|string|max:50|unique:lines,line_code',
+            'line_code' => 'nullable|string|max:50',
         ]);
 
-        $line = Line::create($validated);
+        $line = Line::create([
+            'floor_id' => $validated['floor_id'],
+            'name' => $validated['name'],
+            'line_code' => !empty($validated['line_code']) ? $validated['line_code'] : $validated['name'],
+        ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Production Line created successfully.',
+            'message' => "Line {$line->name} created successfully.",
             'data' => $line->load(['floor.block:id,name,code'])->loadCount(['machines', 'users']),
         ], 201);
     }
@@ -229,14 +257,18 @@ class HierarchyController extends Controller
         $validated = $request->validate([
             'floor_id' => 'sometimes|required|exists:floors,id',
             'name' => 'sometimes|required|string|max:255',
-            'line_code' => 'sometimes|required|string|max:50|unique:lines,line_code,' . $id,
+            'line_code' => 'nullable|string|max:50',
         ]);
 
-        $line->update($validated);
+        $line->update(array_filter([
+            'name' => $validated['name'] ?? $line->name,
+            'line_code' => $validated['line_code'] ?? $line->line_code,
+            'floor_id' => $validated['floor_id'] ?? $line->floor_id,
+        ]));
 
         return response()->json([
             'success' => true,
-            'message' => 'Production Line updated successfully.',
+            'message' => "Line updated successfully.",
             'data' => $line->fresh(['floor.block:id,name,code'])->loadCount(['machines', 'users']),
         ]);
     }
@@ -375,7 +407,7 @@ class HierarchyController extends Controller
 
     public function dashboardSummary(Request $request): JsonResponse
     {
-        $user = $request->user();
+        $user = auth('sanctum')->user() ?? $request->user();
 
         $machineQuery = Machine::query();
         $ticketQuery = RepairLog::query();
@@ -412,3 +444,4 @@ class HierarchyController extends Controller
         ]);
     }
 }
+

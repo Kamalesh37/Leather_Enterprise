@@ -12,7 +12,9 @@ use App\Http\Controllers\Api\ServiceCatalogController;
 use App\Http\Controllers\Api\SpareApprovalController;
 use App\Http\Controllers\Api\SpareDispatchController;
 use App\Http\Controllers\Api\VendorController;
+use App\Http\Controllers\Api\WorkReportController;
 use Illuminate\Support\Facades\Route;
+
 
 /*
 |--------------------------------------------------------------------------
@@ -39,7 +41,6 @@ Route::prefix('hierarchy')->group(function () {
     Route::get('/', [HierarchyController::class, 'index']);
     Route::get('/options', [HierarchyController::class, 'options']);
     Route::get('/summary', [HierarchyController::class, 'dashboardSummary']);
-
     // Master Tables
     Route::get('/blocks', [HierarchyController::class, 'listBlocks']);
     Route::post('/blocks', [HierarchyController::class, 'storeBlock']);
@@ -62,13 +63,16 @@ Route::prefix('hierarchy')->group(function () {
     Route::delete('/roles/{id}', [HierarchyController::class, 'destroyRole']);
 });
 
+
 // Crew Management & RBAC Matrix
 Route::prefix('crew')->group(function () {
     Route::get('/', [CrewController::class, 'index']);
     Route::post('/', [CrewController::class, 'store']);
     Route::put('/{id}', [CrewController::class, 'update']);
     Route::get('/mechanics/active', [CrewController::class, 'mechanics']);
+    Route::get('/hierarchy-chain', [CrewController::class, 'reportingHierarchy']);
 });
+
 
 // Vendors Catalog
 Route::prefix('vendors')->group(function () {
@@ -82,12 +86,15 @@ Route::prefix('vendors')->group(function () {
 Route::prefix('machines')->group(function () {
     Route::get('/', [MachineController::class, 'index']);
     Route::post('/', [MachineController::class, 'store']);
+    Route::get('/grouped-types', [MachineController::class, 'groupedTypes']);
+    Route::post('/add-quantity', [MachineController::class, 'addQuantity']);
     Route::get('/qr/{qrHash}', [MachineController::class, 'lookupByQR']);
     Route::get('/{id}', [MachineController::class, 'show']);
     Route::put('/{id}', [MachineController::class, 'update']);
     Route::delete('/{id}', [MachineController::class, 'destroy']);
     Route::get('/{id}/qr-label', [MachineController::class, 'qrLabel']);
 });
+
 
 // Frequent Service Catalog Templates
 Route::get('/service-catalog', [ServiceCatalogController::class, 'index']);
@@ -141,3 +148,14 @@ Route::prefix('inventory')->group(function () {
 Route::prefix('analytics')->group(function () {
     Route::get('/dashboard', [AnalyticsController::class, 'dashboard']);
 });
+
+// Work Done Reporting System to Higher Officials
+Route::prefix('work-reports')->group(function () {
+    Route::get('/', [WorkReportController::class, 'index']);
+    Route::post('/', [WorkReportController::class, 'store']);
+    Route::get('/templates', [WorkReportController::class, 'templates']);
+    Route::get('/my-submissions', [WorkReportController::class, 'mySubmissions']);
+    Route::get('/subordinate-inbox', [WorkReportController::class, 'subordinateInbox']);
+    Route::patch('/{id}/acknowledge', [WorkReportController::class, 'acknowledge']);
+});
+

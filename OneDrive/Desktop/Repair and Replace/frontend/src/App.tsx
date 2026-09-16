@@ -13,6 +13,7 @@ import { TechLeadApprovalQueue } from './components/TechLead/TechLeadApprovalQue
 import { SpareHeadDispatchStation } from './components/SpareHead/SpareHeadDispatchStation';
 import { InventoryGrid } from './components/Inventory/InventoryGrid';
 import { AuditLedgerView } from './components/AuditLedger/AuditLedgerView';
+import { WorkReportsView } from './components/WorkReports/WorkReportsView';
 import { BreakdownIntakeModal } from './components/Supervisor/BreakdownIntakeModal';
 import { Machine } from './types';
 import { Api } from './api/client';
@@ -23,6 +24,14 @@ export const AppContent: React.FC = () => {
 
   const [pendingApprovalsCount, setPendingApprovalsCount] = useState<number>(0);
   const [pendingDispatchesCount, setPendingDispatchesCount] = useState<number>(0);
+  const [pendingReportsCount, setPendingReportsCount] = useState<number>(0);
+
+  // Cross-tab navigation filters
+  const [catalogFilters, setCatalogFilters] = useState<{
+    status?: string;
+    line_id?: number | string;
+    search?: string;
+  }>({});
 
   // Global Breakdown Modal trigger for machine catalog
   const [breakdownModalOpen, setBreakdownModalOpen] = useState<boolean>(false);
@@ -31,9 +40,10 @@ export const AppContent: React.FC = () => {
   // Fetch pending badge counters
   const fetchBadgeCounters = async () => {
     try {
-      const [apprRes, dispRes] = await Promise.all([
+      const [apprRes, dispRes, repRes] = await Promise.all([
         Api.listPendingApprovals(),
         Api.listPendingDispatches(),
+        Api.getSubordinateWorkReports(),
       ]);
 
       if (apprRes.success && apprRes.data) {
@@ -41,6 +51,9 @@ export const AppContent: React.FC = () => {
       }
       if (dispRes.success && dispRes.data) {
         setPendingDispatchesCount(dispRes.data.length);
+      }
+      if (repRes.success && repRes.data) {
+        setPendingReportsCount(repRes.data.filter((r) => r.status === 'submitted').length);
       }
     } catch (e) {
       // ignore
@@ -51,7 +64,7 @@ export const AppContent: React.FC = () => {
     fetchBadgeCounters();
     const interval = setInterval(fetchBadgeCounters, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [user?.id]);
 
   // Set intuitive default tab whenever simulated role changes
   useEffect(() => {
@@ -90,9 +103,20 @@ export const AppContent: React.FC = () => {
     }
   }, [activeTab]);
 
-  const handleOpenBreakdownFromCatalog = (machine: Machine) => {
-    setTargetBreakdownMachine(machine);
+  const handleOpenBreakdownFromCatalog = (machine?: Machine) => {
+    setTargetBreakdownMachine(machine || null);
     setBreakdownModalOpen(true);
+  };
+
+  const handleNavigateTab = (tab: NavTab, params?: any) => {
+    if (tab === 'machines' && params) {
+      setCatalogFilters({
+        status: params.status || '',
+        line_id: params.line_id || '',
+        search: params.search || '',
+      });
+    }
+    setActiveTab(tab);
   };
 
   return (
@@ -105,14 +129,25 @@ export const AppContent: React.FC = () => {
           onTabChange={setActiveTab}
           pendingApprovalsCount={pendingApprovalsCount}
           pendingDispatchesCount={pendingDispatchesCount}
+          pendingReportsCount={pendingReportsCount}
         />
 
         <main className="main-content" ref={mainContentRef}>
-          {activeTab === 'dashboard' && <ExecutiveDashboard />}
+          {activeTab === 'dashboard' && (
+            <ExecutiveDashboard
+              onNavigateTab={handleNavigateTab}
+              onOpenBreakdown={handleOpenBreakdownFromCatalog}
+            />
+          )}
           {activeTab === 'masters' && <MasterManagement />}
           {activeTab === 'crew' && <CrewList />}
           {activeTab === 'machines' && (
-            <MachineCatalog onOpenBreakdown={handleOpenBreakdownFromCatalog} />
+            <MachineCatalog
+              onOpenBreakdown={handleOpenBreakdownFromCatalog}
+              initialStatus={catalogFilters.status}
+              initialLineId={catalogFilters.line_id}
+              initialSearch={catalogFilters.search}
+            />
           )}
           {activeTab === 'vendors' && <VendorCatalog />}
           {activeTab === 'supervisor' && <LineDashboard />}
@@ -121,6 +156,7 @@ export const AppContent: React.FC = () => {
           {activeTab === 'spare_head' && <SpareHeadDispatchStation />}
           {activeTab === 'inventory' && <InventoryGrid />}
           {activeTab === 'audit_ledger' && <AuditLedgerView />}
+          {activeTab === 'work_reports' && <WorkReportsView />}
         </main>
       </div>
 

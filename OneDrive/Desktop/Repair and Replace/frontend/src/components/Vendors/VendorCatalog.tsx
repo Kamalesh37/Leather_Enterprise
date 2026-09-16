@@ -20,8 +20,10 @@ import {
   ExternalLink,
   Layers,
   Wrench,
+  Tag,
   X,
 } from 'lucide-react';
+
 
 export const VendorCatalog: React.FC = () => {
   const toast = useToast();
@@ -42,10 +44,10 @@ export const VendorCatalog: React.FC = () => {
   const [categoriesInput, setCategoriesInput] = useState<string>('Heavy Stitching, Hydraulic Presses, CNC Cutting');
   const [submitting, setSubmitting] = useState<boolean>(false);
 
-  const fetchVendors = async () => {
+  const fetchVendors = async (searchQuery: string = search) => {
     setLoading(true);
     try {
-      const res = await Api.listVendors();
+      const res = await Api.listVendors({ search: searchQuery || undefined });
       if (res.success && res.data) {
         setVendors(res.data);
       }
@@ -57,8 +59,35 @@ export const VendorCatalog: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchVendors();
-  }, []);
+    const timer = setTimeout(() => {
+      fetchVendors(search);
+    }, 220);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  const highlightMatch = (text: string, query: string) => {
+    if (!query.trim() || query.length < 2) return text;
+    const regex = new RegExp(`(${query.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, '\\$&')})`, 'gi');
+    const parts = text.split(regex);
+    return parts.map((part, i) =>
+      part.toLowerCase() === query.toLowerCase() ? (
+        <mark
+          key={i}
+          style={{
+            background: 'rgba(99, 102, 241, 0.45)',
+            color: '#fff',
+            borderRadius: '2px',
+            padding: '0 2px',
+          }}
+        >
+          {part}
+        </mark>
+      ) : (
+        part
+      )
+    );
+  };
+
 
   // Compute unique categories across all vendors
   const allCategories = useMemo(() => {
@@ -257,6 +286,13 @@ export const VendorCatalog: React.FC = () => {
             </button>
           ))}
         </div>
+
+        {search && (
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '10px', paddingTop: '10px', borderTop: '1px solid var(--border-color)', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+            <span>Available Vendors: <strong style={{ color: 'var(--text-primary)' }}>{vendors.length}</strong></span>
+            <span className="badge badge-primary">Search: "{search}"</span>
+          </div>
+        )}
       </div>
 
       {/* Vendors Grid */}
@@ -300,10 +336,10 @@ export const VendorCatalog: React.FC = () => {
                   <div className="vendor-avatar">{initial}</div>
 
                   <div className="vendor-header-info">
-                    <h3 className="vendor-name" title={v.name}>{v.name}</h3>
+                    <h3 className="vendor-name" title={v.name}>{highlightMatch(v.name, search)}</h3>
                     <div className="vendor-contact-person">
                       <ShieldCheck size={14} color="var(--accent-emerald)" />
-                      <span>{v.contact_name || 'Authorized Technical Rep'}</span>
+                      <span>{highlightMatch(v.contact_name || 'Authorized Technical Rep', search)}</span>
                     </div>
                   </div>
 

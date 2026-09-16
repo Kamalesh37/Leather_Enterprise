@@ -2,34 +2,36 @@
 
 namespace App\Services;
 
-use App\Enums\InventoryChangeType;
+use App\Exceptions\InsufficientStockException;
 use App\Models\InventoryAuditLog;
+use App\Models\Machine;
 use App\Models\Part;
-use App\Models\Product;
-use App\Models\ServiceTicket;
-use App\Models\TicketPartUsed;
+use App\Models\RepairLog;
+use App\Models\RepairSpareRequest;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 
 class InventoryService
 {
     /**
      * Executes atomic multi-part allocation with row-level locks and rollback.
      */
-    public function applyPartsAtomically(string $ticketId, array $requestedParts): array
+    public function applyPartsAtomically(int|string $ticketId, array $requestedParts, ?int $userId = null): array
     {
-        return DB::transaction(function () use ($ticketId, $requestedParts) {
-            $ticket = ServiceTicket::where('ticket_id', $ticketId)->first();
+        return DB::transaction(function () use ($ticketId, $requestedParts, $userId) {
+            $ticket = is_numeric($ticketId)
+                ? RepairLog::find((int) $ticketId)
+                : RepairLog::where('ticket_number', $ticketId)->first();
+
             if (!$ticket) {
-                throw new \Exception('Ticket not found', 404);
+                throw new \Exception('Repair ticket not found', 404);
             }
 
             // Consolidate duplicate requested parts
             $consolidated = [];
             foreach ($requestedParts as $item) {
-                $pId = $item['part_id'];
-                $qty = (int) $item['quantity'];
-                if ($qty <= 0) continue;
+                $pId = $item['part_id'] ?? $item['id'] ?? null;
+                $qty = (int) ($item['quantity'] ?? $item['requested_quantity'] ?? 0);
+                if (!$pId || $qty <= 0) continue;
                 $consolidated[$pId] = ($consolidated[$pId] ?? 0) + $qty;
             }
 
@@ -37,9 +39,9 @@ class InventoryService
                 throw new \Exception('No valid parts to apply', 400);
             }
 
-            // Lock and fetch parts
+            // Lock and fetch parts using pessimistic row-level locking
             $partIds = array_keys($consolidated);
-            $parts = Part::whereIn('part_id', $partIds)->lockForUpdate()->get()->keyBy('part_id');
+            $parts = Part::whereIn('id', $partIds)->lockForUpdate()->get()->keyBy('id');
 
             // Pre-flight check: verify all parts exist and have sufficient stock
             $insufficient = [];
@@ -60,28 +62,31 @@ class InventoryService
             }
 
             if (!empty($insufficient)) {
-                $error = new \Exception('Insufficient stock for one or more requested parts.', 409);
-                (function () use ($insufficient) {
-                    $this->details = $insufficient;
-                    $this->code = 'INSUFFICIENT_STOCK';
-                })->call($error);
-                throw $error;
+                throw new InsufficientStockException(
+                    'Insufficient stock for one or more requested parts.',
+                    $insufficient,
+                    'INSUFFICIENT_STOCK',
+                    409
+                );
             }
 
             // Apply deductions atomically
             $deductions = [];
             foreach ($consolidated as $pId => $qty) {
                 $part = $parts->get($pId);
-                $newBalance = $part->stock_quantity - $qty;
+                $balanceBefore = $part->stock_quantity;
+                $newBalance = $balanceBefore - $qty;
 
-                // Create TicketPartUsed record
-                $usage = TicketPartUsed::create([
-                    'id' => (string) Str::uuid(),
-                    'ticket_id' => $ticketId,
-                    'part_id' => $pId,
-                    'quantity_used' => $qty,
-                    'unit_price_at_repair' => $part->unit_cost,
-                    'created_at' => now(),
+                // Create or update RepairSpareRequest record
+                RepairSpareRequest::create([
+                    'repair_log_id' => $ticket->id,
+                    'part_id' => $part->id,
+                    'requested_quantity' => $qty,
+                    'approved_quantity' => $qty,
+                    'dispatched_quantity' => $qty,
+                    'unit_cost_at_dispatch' => $part->unit_cost,
+                    'status' => RepairSpareRequest::STATUS_DISPATCHED,
+                    'tech_lead_notes' => 'Allocated atomically via InventoryService',
                 ]);
 
                 // Update Part stock
@@ -90,19 +95,22 @@ class InventoryService
 
                 // Create Audit Log
                 InventoryAuditLog::create([
-                    'log_id' => (string) Str::uuid(),
-                    'part_id' => $pId,
-                    'ticket_id' => $ticketId,
-                    'change_amount' => -$qty,
-                    'change_type' => InventoryChangeType::REPAIR_DEDUCTION,
+                    'part_id' => $part->id,
+                    'repair_log_id' => $ticket->id,
+                    'user_id' => $userId,
+                    'change_type' => InventoryAuditLog::TYPE_DISPATCH,
+                    'quantity_delta' => -$qty,
+                    'balance_before' => $balanceBefore,
                     'balance_after' => $newBalance,
+                    'remarks' => "Dispatch from bin {$part->location_bin} for ticket {$ticket->ticket_number}",
                     'timestamp' => now(),
                 ]);
 
                 $deductions[] = [
-                    'part_id' => $pId,
+                    'part_id' => $part->id,
                     'part_number' => $part->part_number,
                     'name' => $part->name,
+                    'bin' => $part->location_bin,
                     'quantity_deducted' => $qty,
                     'remaining_stock' => $newBalance,
                     'unit_price_charged' => (float) $part->unit_cost,
@@ -110,7 +118,8 @@ class InventoryService
             }
 
             return [
-                'ticket_id' => $ticketId,
+                'ticket_id' => $ticket->id,
+                'ticket_number' => $ticket->ticket_number,
                 'parts_applied_count' => count($deductions),
                 'deductions' => $deductions,
             ];
@@ -120,15 +129,19 @@ class InventoryService
     /**
      * Inbound restock of a part SKU.
      */
-    public function restockPart(string $partId, int $quantity, ?float $unitCost = null): array
+    public function restockPart(int|string $partId, int $quantity, ?float $unitCost = null, ?int $userId = null, ?string $remarks = null): array
     {
-        return DB::transaction(function () use ($partId, $quantity, $unitCost) {
-            $part = Part::where('part_id', $partId)->lockForUpdate()->first();
+        return DB::transaction(function () use ($partId, $quantity, $unitCost, $userId, $remarks) {
+            $part = is_numeric($partId)
+                ? Part::where('id', (int) $partId)->lockForUpdate()->first()
+                : Part::where('part_number', $partId)->lockForUpdate()->first();
+
             if (!$part) {
                 throw new \Exception('Part not found', 404);
             }
 
-            $newBalance = $part->stock_quantity + $quantity;
+            $balanceBefore = $part->stock_quantity;
+            $newBalance = $balanceBefore + $quantity;
             $part->stock_quantity = $newBalance;
             if ($unitCost !== null && $unitCost > 0) {
                 $part->unit_cost = $unitCost;
@@ -136,20 +149,23 @@ class InventoryService
             $part->save();
 
             InventoryAuditLog::create([
-                'log_id' => (string) Str::uuid(),
-                'part_id' => $partId,
-                'ticket_id' => null,
-                'change_amount' => $quantity,
-                'change_type' => InventoryChangeType::RESTOCK,
+                'part_id' => $part->id,
+                'repair_log_id' => null,
+                'user_id' => $userId,
+                'change_type' => InventoryAuditLog::TYPE_RESTOCK,
+                'quantity_delta' => $quantity,
+                'balance_before' => $balanceBefore,
                 'balance_after' => $newBalance,
+                'remarks' => $remarks ?? "Restock to Bin {$part->location_bin}",
                 'timestamp' => now(),
             ]);
 
             return [
-                'part_id' => $part->part_id,
+                'part_id' => $part->id,
                 'part_number' => $part->part_number,
                 'name' => $part->name,
-                'previous_stock' => $newBalance - $quantity,
+                'bin' => $part->location_bin,
+                'previous_stock' => $balanceBefore,
                 'quantity_added' => $quantity,
                 'new_stock_quantity' => $newBalance,
                 'unit_cost' => (float) $part->unit_cost,
@@ -169,22 +185,24 @@ class InventoryService
         $outOfStock = $parts->filter(fn($p) => $p->stock_quantity == 0)->count();
         $totalValuation = $parts->sum(fn($p) => $p->stock_quantity * (float) $p->unit_cost);
 
-        $tickets = ServiceTicket::all();
+        $tickets = RepairLog::all();
         $totalTickets = $tickets->count();
-        $activeTickets = $tickets->filter(fn($t) => !in_array($t->status->value, ['COMPLETED', 'DELIVERED']))->count();
-        $completedTickets = $tickets->filter(fn($t) => in_array($t->status->value, ['COMPLETED', 'DELIVERED']))->count();
+        $activeTickets = $tickets->filter(fn($t) => !in_array($t->status, [RepairLog::STATUS_OPERATIONAL, RepairLog::STATUS_CLOSED]))->count();
+        $completedTickets = $tickets->filter(fn($t) => in_array($t->status, [RepairLog::STATUS_OPERATIONAL, RepairLog::STATUS_CLOSED]))->count();
 
         $byStatus = [
-            'INTAKE' => $tickets->where('status.value', 'INTAKE')->count(),
-            'DIAGNOSING' => $tickets->where('status.value', 'DIAGNOSING')->count(),
-            'WAITING_PARTS' => $tickets->where('status.value', 'WAITING_PARTS')->count(),
-            'IN_PROGRESS' => $tickets->where('status.value', 'IN_PROGRESS')->count(),
-            'COMPLETED' => $tickets->where('status.value', 'COMPLETED')->count(),
-            'DELIVERED' => $tickets->where('status.value', 'DELIVERED')->count(),
+            'REPORTED' => $tickets->where('status', RepairLog::STATUS_REPORTED)->count(),
+            'DIAGNOSING' => $tickets->where('status', RepairLog::STATUS_DIAGNOSING)->count(),
+            'PENDING_TECH_APPROVAL' => $tickets->where('status', RepairLog::STATUS_PENDING_TECH_APPROVAL)->count(),
+            'PENDING_SPARE_DISPATCH' => $tickets->where('status', RepairLog::STATUS_PENDING_SPARE_DISPATCH)->count(),
+            'IN_REPAIR' => $tickets->where('status', RepairLog::STATUS_IN_REPAIR)->count(),
+            'PENDING_SIGN_OFF' => $tickets->where('status', RepairLog::STATUS_PENDING_SIGN_OFF)->count(),
+            'OPERATIONAL' => $tickets->where('status', RepairLog::STATUS_OPERATIONAL)->count(),
+            'CLOSED' => $tickets->where('status', RepairLog::STATUS_CLOSED)->count(),
         ];
 
-        $recentActivity = InventoryAuditLog::with(['part', 'ticket'])
-            ->orderBy('timestamp', 'desc')
+        $recentActivity = InventoryAuditLog::with(['part', 'repairLog.machine', 'user'])
+            ->orderByDesc('timestamp')
             ->limit(10)
             ->get();
 
@@ -202,8 +220,10 @@ class InventoryService
                 'completed_tickets' => $completedTickets,
                 'by_status' => $byStatus,
             ],
-            'products' => [
-                'total_products' => Product::count(),
+            'machines' => [
+                'total_machines' => Machine::count(),
+                'breakdown_machines' => Machine::where('status', Machine::STATUS_BREAKDOWN)->count(),
+                'operational_machines' => Machine::where('status', Machine::STATUS_OPERATIONAL)->count(),
             ],
             'recent_activity' => $recentActivity,
         ];

@@ -65,25 +65,30 @@ class AuthController extends Controller
     }
 
     /**
-     * Demo role switcher to easily test all 7 roles
+     * Persona switcher to switch between users or roles
      */
     public function switchRole(Request $request): JsonResponse
     {
-        $role = $request->query('role', 'admin');
+        $query = User::with(['permission', 'block', 'floor', 'line', 'manager']);
 
-        $user = User::with(['permission', 'block', 'floor', 'line'])
-            ->where('role', $role)
-            ->first();
+        if ($request->filled('user_id')) {
+            $user = $query->find($request->user_id);
+        } elseif ($request->filled('email')) {
+            $user = $query->where('email', $request->email)->first();
+        } elseif ($request->filled('role')) {
+            $user = $query->where('role', $request->role)->first();
+        } else {
+            $user = $query->where('role', 'admin')->first();
+        }
 
         if (!$user) {
-            // fallback to first user
-            $user = User::with(['permission', 'block', 'floor', 'line'])->first();
+            $user = User::with(['permission', 'block', 'floor', 'line', 'manager'])->first();
         }
 
         if (!$user) {
             return response()->json([
                 'success' => false,
-                'message' => 'No user found for role.',
+                'message' => 'No user found.',
             ], 404);
         }
 
@@ -99,3 +104,4 @@ class AuthController extends Controller
         ]);
     }
 }
+

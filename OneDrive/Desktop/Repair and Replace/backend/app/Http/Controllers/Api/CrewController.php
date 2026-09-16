@@ -8,6 +8,7 @@ use App\Http\Requests\UpdateCrewPermissionsRequest;
 use App\Models\RepairLog;
 use App\Models\User;
 use App\Models\UserPermission;
+
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,10 +18,14 @@ class CrewController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $query = User::with(['permission', 'block', 'floor', 'line']);
+        $query = User::with(['permission', 'block', 'floor', 'line', 'manager:id,name,role,email,phone']);
 
         if ($request->filled('role')) {
             $query->where('role', $request->role);
+        }
+
+        if ($request->filled('manager_id')) {
+            $query->where('manager_id', $request->manager_id);
         }
 
         if ($request->filled('block_id')) {
@@ -62,6 +67,7 @@ class CrewController extends Controller
                 'email' => $validated['email'],
                 'password' => Hash::make($validated['password']),
                 'role' => $validated['role'],
+                'manager_id' => $validated['manager_id'] ?? null,
                 'block_id' => $validated['block_id'] ?? null,
                 'floor_id' => $validated['floor_id'] ?? null,
                 'line_id' => $validated['line_id'] ?? null,
@@ -86,7 +92,7 @@ class CrewController extends Controller
                 'can_view_analytics' => (bool) ($mergedPermissions['can_view_analytics'] ?? false),
             ]);
 
-            return $user->load(['permission', 'block', 'floor', 'line']);
+            return $user->load(['permission', 'block', 'floor', 'line', 'manager']);
         });
 
         return response()->json([
@@ -104,6 +110,7 @@ class CrewController extends Controller
         DB::transaction(function () use ($user, $validated) {
             $user->update(array_filter([
                 'role' => $validated['role'] ?? $user->role,
+                'manager_id' => array_key_exists('manager_id', $validated) ? $validated['manager_id'] : $user->manager_id,
                 'block_id' => array_key_exists('block_id', $validated) ? $validated['block_id'] : $user->block_id,
                 'floor_id' => array_key_exists('floor_id', $validated) ? $validated['floor_id'] : $user->floor_id,
                 'line_id' => array_key_exists('line_id', $validated) ? $validated['line_id'] : $user->line_id,
@@ -130,11 +137,47 @@ class CrewController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Crew member updated successfully.',
-            'data' => $user->fresh(['permission', 'block', 'floor', 'line']),
+            'data' => $user->fresh(['permission', 'block', 'floor', 'line', 'manager']),
+        ]);
+    }
+
+    /**
+     * Get Complete Organizational Reporting Hierarchy Structure
+     */
+    public function reportingHierarchy(): JsonResponse
+    {
+        $admin = User::where('role', User::ROLE_ADMIN)->first();
+        $blockManagers = User::where('role', User::ROLE_BLOCK_MANAGER)->with(['block', 'subordinates'])->get();
+        $floorManagers = User::where('role', User::ROLE_FLOOR_MANAGER)->with(['block', 'floor', 'manager', 'subordinates'])->get();
+        $lineSupervisors = User::where('role', User::ROLE_LINE_SUPERVISOR)->with(['block', 'floor', 'line', 'manager', 'subordinates'])->get();
+        $mechanics = User::where('role', User::ROLE_MECHANIC)->with(['block', 'floor', 'line', 'manager'])->get();
+        $techLeads = User::where('role', User::ROLE_TECH_LEAD)->with(['block', 'manager'])->get();
+        $spareHeads = User::where('role', User::ROLE_SPARE_HEAD)->with(['block', 'manager'])->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'plant_director' => $admin,
+                'block_managers' => $blockManagers,
+                'floor_managers' => $floorManagers,
+                'line_supervisors' => $lineSupervisors,
+                'mechanics' => $mechanics,
+                'specialists' => [
+                    'tech_leads' => $techLeads,
+                    'spare_heads' => $spareHeads,
+                ],
+                'summary' => [
+                    'total_employees' => User::count(),
+                    'floor_managers_count' => $floorManagers->count(),
+                    'line_supervisors_count' => $lineSupervisors->count(),
+                    'mechanics_count' => $mechanics->count(),
+                ],
+            ],
         ]);
     }
 
     public function mechanics(): JsonResponse
+
     {
         $mechanics = User::where('role', 'mechanic')
             ->where('status', 'active')
