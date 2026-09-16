@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import { Role, User } from '../../types';
 import { Api } from '../../api/client';
 import { LoginModal } from '../Auth/LoginModal';
@@ -7,14 +8,13 @@ import { WorkReportModal } from '../WorkReports/WorkReportModal';
 import {
   Shield,
   Layers,
-  UserCheck,
-  Zap,
-  Activity,
-  LogOut,
   ChevronDown,
   Building,
   MapPin,
   Cpu,
+  Sun,
+  Moon,
+  Database,
   LogIn,
   Key,
   Users,
@@ -26,8 +26,9 @@ import {
 
 export const Navbar: React.FC = () => {
   const { user, switchUser, switchDemoRole, logout, loading } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [dbStatus, setDbStatus] = useState<string>('CONNECTED');
-  const [dbType, setDbType] = useState<string>('DB');
+  const [dbDriver, setDbDriver] = useState<string>('MySQL');
   const [roleDropdownOpen, setRoleDropdownOpen] = useState<boolean>(false);
   const [loginModalOpen, setLoginModalOpen] = useState<boolean>(false);
   const [reportModalOpen, setReportModalOpen] = useState<boolean>(false);
@@ -39,8 +40,11 @@ export const Navbar: React.FC = () => {
       .then((res) => {
         if (res.success && res.data) {
           setDbStatus(res.data.database || 'CONNECTED');
-          if ((res.data as any).connection) {
-            setDbType((res.data as any).connection);
+          if (res.data.driver) {
+            setDbDriver(res.data.driver);
+          } else if ((res.data as any).connection) {
+            setDbDriver((res.data as any).connection);
+          }
           }
         }
       })
@@ -116,9 +120,10 @@ export const Navbar: React.FC = () => {
       </div>
 
       <div className="navbar-center">
-        <div className="system-health-pill">
+        <div className="system-health-pill" title={`Connected to ${dbDriver} Database`}>
+          <Database size={13} style={{ color: dbStatus === 'CONNECTED' ? 'var(--accent-emerald)' : 'var(--accent-rose)' }} />
           <span className={`status-dot ${dbStatus === 'CONNECTED' ? 'online' : 'offline'}`}></span>
-          <span>{dbType}: {dbStatus}</span>
+          <span>{dbDriver} DB: {dbStatus}</span>
         </div>
 
         {user && (
@@ -150,6 +155,21 @@ export const Navbar: React.FC = () => {
       </div>
 
       <div className="navbar-actions">
+        {/* Dark / Light Mode Toggle */}
+        <button
+          className="theme-toggle-btn"
+          onClick={toggleTheme}
+          title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
+          aria-label="Toggle Theme"
+        >
+          {theme === 'dark' ? (
+            <Sun size={17} className="theme-icon sun-icon" />
+          ) : (
+            <Moon size={17} className="theme-icon moon-icon" />
+          )}
+          <span className="theme-label">{theme === 'dark' ? 'Light' : 'Dark'}</span>
+        </button>
+
         {/* Quick Report Work Done Button */}
         <button
           type="button"
@@ -173,7 +193,6 @@ export const Navbar: React.FC = () => {
           <Key size={14} color="var(--accent-cyan)" />
           <span>Login / Switch App</span>
         </button>
-
 
         {/* User Account & App Persona Switcher */}
         <div className="role-switcher-container">

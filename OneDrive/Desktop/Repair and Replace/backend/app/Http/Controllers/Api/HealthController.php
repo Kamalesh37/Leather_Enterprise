@@ -10,12 +10,23 @@ class HealthController extends Controller
 {
     public function check(): JsonResponse
     {
+        $driver = config('database.default', 'mysql');
+        $dbName = config("database.connections.{$driver}.database", 'database');
+
         try {
             DB::connection()->getPdo();
             $dbStatus = 'CONNECTED';
         } catch (\Exception $e) {
             $dbStatus = 'DISCONNECTED';
         }
+
+        $driverDisplay = match (strtolower($driver)) {
+            'mysql' => 'MySQL',
+            'sqlite' => 'SQLite',
+            'pgsql' => 'PostgreSQL',
+            'sqlsrv' => 'SQL Server',
+            default => strtoupper($driver),
+        };
 
         return response()->json([
             'success' => true,
@@ -24,6 +35,8 @@ class HealthController extends Controller
                 'timestamp' => now()->toISOString(),
                 'environment' => config('app.env'),
                 'database' => $dbStatus,
+                'driver' => $driverDisplay,
+                'database_name' => $dbName,
                 'connection' => strtoupper(config('database.default')),
                 'framework' => 'Laravel 12 (PHP ' . PHP_VERSION . ')',
             ],

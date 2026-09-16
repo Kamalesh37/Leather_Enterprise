@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import {
   LayoutDashboard,
@@ -17,6 +17,9 @@ import {
   ShieldCheck,
   Zap,
   Layers,
+  ChevronDown,
+  ChevronRight,
+  FolderGit2,
   Building,
   MapPin,
   ArrowUp,
@@ -26,6 +29,7 @@ import {
 
 export type NavTab =
   | 'dashboard'
+  | 'masters'
   | 'crew'
   | 'machines'
   | 'vendors'
@@ -37,7 +41,7 @@ export type NavTab =
   | 'audit_ledger'
   | 'work_reports';
 
-interface NavItem {
+interface NavSubItem {
   id: NavTab;
   label: string;
   icon: React.ComponentType<{ size?: number; className?: string }>;
@@ -45,6 +49,19 @@ interface NavItem {
   permission?: 'can_manage_vendors' | 'can_edit_machines' | 'can_assign_mechanics' | 'can_approve_diagnostics' | 'can_dispatch_spares' | 'can_adjust_inventory_stock' | 'can_view_analytics' | null;
   badge?: string;
   counter?: number;
+}
+
+interface NavItem {
+  id?: NavTab;
+  label: string;
+  icon: React.ComponentType<{ size?: number; className?: string }>;
+  roles?: string[];
+  permission?: 'can_manage_vendors' | 'can_edit_machines' | 'can_assign_mechanics' | 'can_approve_diagnostics' | 'can_dispatch_spares' | 'can_adjust_inventory_stock' | 'can_view_analytics' | null;
+  badge?: string;
+  counter?: number;
+  isDropdown?: boolean;
+  dropdownKey?: string;
+  children?: NavSubItem[];
 }
 
 interface NavGroup {
@@ -68,6 +85,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
   pendingReportsCount = 0,
 }) => {
   const { user, hasPermission } = useAuth();
+  const [machineryOpen, setMachineryOpen] = useState<boolean>(true);
+
+  // Auto-expand dropdown when active tab is one of its children
+  useEffect(() => {
+    if (activeTab === 'machines' || activeTab === 'vendors') {
+      setMachineryOpen(true);
+    }
+  }, [activeTab]);
 
   const getAppTitle = (role?: string) => {
     switch (role) {
@@ -95,6 +120,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
       heading: 'FACTORY OVERSIGHT',
       items: [
         {
+        {
+          id: 'masters',
+          label: 'Master Tables (RBAC & Plants)',
+          icon: Layers,
+          roles: ['admin'],
+          permission: null,
+          badge: 'Master',
+        },
+        {
           id: 'crew',
           label: 'Crew & Reporting Tree',
           icon: Users,
@@ -103,18 +137,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
           badge: 'Admin',
         },
         {
-          id: 'machines',
-          label: 'Machinery Registry',
+          label: 'Machinery & Equipment',
           icon: Cpu,
+          isDropdown: true,
+          dropdownKey: 'machinery',
           roles: ['admin', 'block_manager', 'floor_manager', 'line_supervisor', 'mechanic', 'tech_lead', 'spare_head'],
-          permission: null,
-        },
-        {
-          id: 'vendors',
-          label: 'Machinery Vendors',
-          icon: Truck,
-          roles: ['admin', 'spare_head', 'tech_lead'],
-          permission: 'can_manage_vendors',
+          children: [
+            {
+              id: 'machines',
+              label: 'Machinery & QR Registry',
+              icon: Cpu,
+              roles: ['admin', 'block_manager', 'floor_manager', 'line_supervisor', 'mechanic', 'tech_lead', 'spare_head'],
+              permission: null,
+            },
+            {
+              id: 'vendors',
+              label: 'Machinery Vendors',
+              icon: Truck,
+              roles: ['admin', 'spare_head', 'tech_lead'],
+              permission: 'can_manage_vendors',
+            },
+          ],
         },
       ],
     },
@@ -276,6 +319,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {groups.map((group, gIdx) => {
         const visibleItems = group.items.filter((item) => {
+          if (item.isDropdown && item.children) {
+            return item.children.some((child) => {
+              const isAllowedRole = !child.roles || child.roles.includes(user?.role || '');
+              const isAllowedPerm = !child.permission || hasPermission(child.permission);
+              return isAllowedRole || isAllowedPerm || user?.role === 'admin';
+            });
+          }
           const isAllowedRole = !item.roles || item.roles.includes(user?.role || '');
           const isAllowedPerm = !item.permission || hasPermission(item.permission);
           return isAllowedRole || isAllowedPerm || user?.role === 'admin';
@@ -287,15 +337,69 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div key={gIdx} style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <div className="sidebar-menu-heading">{group.heading}</div>
             <nav className="sidebar-nav">
-              {visibleItems.map((item) => {
+              {visibleItems.map((item, iIdx) => {
                 const Icon = item.icon;
-                const isActive = activeTab === item.id;
+
+                // Handle Dropdown with Submenu Children
+                if (item.isDropdown && item.children) {
+                  const visibleChildren = item.children.filter((child) => {
+                    const isAllowedRole = !child.roles || child.roles.includes(user?.role || '');
+                    const isAllowedPerm = !child.permission || hasPermission(child.permission);
+                    return isAllowedRole || isAllowedPerm || user?.role === 'admin';
+                  });
+
+                  if (visibleChildren.length === 0) return null;
+
+                  const isChildActive = visibleChildren.some((child) => child.id === activeTab);
+
+                  return (
+                    <div key={`dropdown-${iIdx}`} style={{ display: 'flex', flexDirection: 'column' }}>
+                      <button
+                        type="button"
+                        className={`sidebar-dropdown-toggle ${isChildActive ? 'active' : ''}`}
+                        onClick={() => setMachineryOpen(!machineryOpen)}
+                      >
+                        <Icon size={18} />
+                        <span style={{ flex: 1, textAlign: 'left' }}>{item.label}</span>
+                        {machineryOpen ? (
+                          <ChevronDown size={15} style={{ opacity: 0.7 }} />
+                        ) : (
+                          <ChevronRight size={15} style={{ opacity: 0.7 }} />
+                        )}
+                      </button>
+
+                      {machineryOpen && (
+                        <div className="sidebar-submenu">
+                          {visibleChildren.map((child) => {
+                            const ChildIcon = child.icon;
+                            const isChildSelected = activeTab === child.id;
+
+                            return (
+                              <button
+                                key={child.id}
+                                className={`sidebar-submenu-item ${isChildSelected ? 'active' : ''}`}
+                                onClick={() => onTabChange(child.id)}
+                              >
+                                <ChildIcon size={15} />
+                                <span style={{ flex: 1, textAlign: 'left' }}>{child.label}</span>
+                                {child.badge && <span className="badge badge-primary">{child.badge}</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                // Standard Single Nav Item
+                const isActive = item.id ? activeTab === item.id : false;
 
                 return (
                   <button
-                    key={item.id}
+                    key={item.id || iIdx}
                     className={`sidebar-nav-item ${isActive ? 'active' : ''}`}
-                    onClick={() => onTabChange(item.id)}
+                    onClick={() => item.id && onTabChange(item.id)}
                   >
                     <Icon size={18} />
                     <span style={{ flex: 1, textAlign: 'left' }}>{item.label}</span>

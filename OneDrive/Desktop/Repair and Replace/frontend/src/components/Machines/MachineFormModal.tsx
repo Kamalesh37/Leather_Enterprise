@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Api } from '../../api/client';
-import { Block, Floor, Line, Vendor } from '../../types';
+import { Block, Floor, Line, Vendor, Machine } from '../../types';
 import { Modal } from '../Common/Modal';
 import { useToast } from '../Common/Toast';
 import {
@@ -24,6 +24,7 @@ interface MachineFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  machine?: Machine | null;
 }
 
 interface SpecItem {
@@ -125,7 +126,12 @@ const CATEGORY_PRESETS: Record<string, { label: string; specs: { key: string; la
   },
 };
 
-export const MachineFormModal: React.FC<MachineFormModalProps> = ({ isOpen, onClose, onSuccess }) => {
+export const MachineFormModal: React.FC<MachineFormModalProps> = ({
+  isOpen,
+  onClose,
+  onSuccess,
+  machine = null,
+}) => {
   const toast = useToast();
 
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -138,6 +144,7 @@ export const MachineFormModal: React.FC<MachineFormModalProps> = ({ isOpen, onCl
   const [modelNumber, setModelNumber] = useState<string>('');
   const [serialNumber, setSerialNumber] = useState<string>('');
   const [vendorId, setVendorId] = useState<string>('');
+  const [status, setStatus] = useState<string>('OPERATIONAL');
   const [quantity, setQuantity] = useState<number>(1);
 
   // Location Hierarchy
@@ -194,11 +201,43 @@ export const MachineFormModal: React.FC<MachineFormModalProps> = ({ isOpen, onCl
       Api.listVendors().then((res) => {
         if (res.success && res.data) {
           setVendors(res.data);
-          if (res.data.length > 0 && !vendorId) setVendorId(String(res.data[0].id));
+          if (!machine && res.data.length > 0 && !vendorId) setVendorId(String(res.data[0].id));
         }
       });
+
+      if (machine) {
+        setMachineCode(machine.machine_code || '');
+        setName(machine.name || '');
+        setModelNumber(machine.model_number || '');
+        setSerialNumber(machine.serial_number || '');
+        setVendorId(machine.vendor_id ? String(machine.vendor_id) : '');
+        setStatus(machine.status || 'OPERATIONAL');
+        setSelectedBlockId(machine.block_id ? String(machine.block_id) : '1');
+        setSelectedFloorId(machine.floor_id ? String(machine.floor_id) : '1');
+        setSelectedLineId(machine.line_id ? String(machine.line_id) : '1');
+
+        if (machine.specifications && Object.keys(machine.specifications).length > 0) {
+          const loadedSpecs: SpecItem[] = Object.entries(machine.specifications).map(([k, v], idx) => ({
+            id: String(idx + 1),
+            key: k,
+            label: k.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+            value: String(v),
+          }));
+          setSpecsList(loadedSpecs);
+        }
+      } else {
+        setMachineCode('');
+        setName('');
+        setModelNumber('');
+        setSerialNumber('');
+        setStatus('OPERATIONAL');
+        setQuantity(1);
+        setSelectedBlockId('1');
+        setSelectedFloorId('1');
+        setSelectedLineId('1');
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, machine]);
 
   const filteredFloors = floors.filter((f) => !selectedBlockId || String(f.block_id) === selectedBlockId);
   const filteredLines = lines.filter((l) => !selectedFloorId || String(l.floor_id) === selectedFloorId);
@@ -356,15 +395,21 @@ export const MachineFormModal: React.FC<MachineFormModalProps> = ({ isOpen, onCl
         block_id: selectedBlockId ? Number(selectedBlockId) : null,
         floor_id: selectedFloorId ? Number(selectedFloorId) : null,
         line_id: selectedLineId ? Number(selectedLineId) : null,
+        status,
         specifications: specificationsDict,
       };
 
-      const res = await Api.storeMachine(payload);
-      toast.success(res.message || `Successfully registered ${quantity} physical machine unit(s) with separate QR passports.`);
+      if (machine) {
+        await Api.updateMachine(machine.id, payload);
+        toast.success(`Machine ${machineCode} specifications updated.`);
+      } else {
+        const res = await Api.storeMachine(payload);
+        toast.success(res.message || `Successfully registered ${quantity} physical machine unit(s) with separate QR passports.`);
+      }
       onSuccess();
       onClose();
     } catch (err: any) {
-      toast.error(err.message || 'Failed to register machine.');
+      toast.error(err.message || (machine ? 'Failed to update machine.' : 'Failed to register machine.'));
     } finally {
       setSubmitting(false);
     }
@@ -376,10 +421,10 @@ export const MachineFormModal: React.FC<MachineFormModalProps> = ({ isOpen, onCl
       onClose={onClose}
       title={
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <Cpu size={22} color="var(--primary)" />
+          {machine ? <Edit3 size={22} color="var(--primary)" /> : <Cpu size={22} color="var(--primary)" />}
           <div>
             <div style={{ fontWeight: 800, fontSize: '1.2rem', color: '#fff' }}>
-              Register Leather Machinery & QR Passport
+              {machine ? `Edit Machinery: ${machine.name} (${machine.machine_code})` : 'Register Leather Machinery & QR Passport'}
             </div>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
               Configure machine type specifications, batch quantity, individual QR passports, and line station placement
@@ -391,14 +436,14 @@ export const MachineFormModal: React.FC<MachineFormModalProps> = ({ isOpen, onCl
       footer={
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
           <div style={{ fontSize: '0.78rem', color: 'var(--accent-cyan)' }}>
-            ⚡ {quantity > 1 ? `Batch Provisioning ${quantity} physical units with separate unique QR tags` : 'Single unit registration with unique QR code'}
+            {machine ? `Editing specifications for [${machine.machine_code}]` : (quantity > 1 ? `⚡ Batch Provisioning ${quantity} physical units with separate unique QR tags` : 'Single unit registration with unique QR code')}
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
             <button type="button" className="btn btn-secondary" onClick={onClose} disabled={submitting}>
               Cancel
             </button>
             <button type="button" className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
-              {submitting ? 'Registering...' : quantity > 1 ? `Register ${quantity} Units & Generate QR Passports` : 'Save & Generate QR Passport'}
+              {submitting ? 'Saving...' : machine ? 'Update Machinery' : quantity > 1 ? `Register ${quantity} Units & Generate QR Passports` : 'Save & Generate QR Passport'}
             </button>
           </div>
         </div>
@@ -420,7 +465,7 @@ export const MachineFormModal: React.FC<MachineFormModalProps> = ({ isOpen, onCl
                 className="form-input"
                 placeholder="e.g. MAC-DA-867"
                 value={machineCode}
-                onChange={(e) => setMachineCode(e.target.value)}
+                onChange={(e) => setMachineCode(e.target.value.toUpperCase())}
                 required
               />
             </div>
@@ -457,43 +502,52 @@ export const MachineFormModal: React.FC<MachineFormModalProps> = ({ isOpen, onCl
                 required
               />
             </div>
-
-            {/* Quantity Stepper Input */}
-            <div>
-              <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>Quantity to Add *</span>
-                <span style={{ color: 'var(--accent-cyan)', fontWeight: 700 }}>{quantity} Unit{quantity > 1 ? 's' : ''}</span>
-              </label>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  style={{ padding: '6px 12px', fontWeight: 800 }}
-                  onClick={() => setQuantity((prev) => Math.max(1, prev - 1))}
-                >
-                  -
-                </button>
-                <input
-                  type="number"
-                  min="1"
-                  max="100"
-                  className="form-input"
-                  style={{ textAlign: 'center', fontWeight: 700 }}
-                  value={quantity}
-                  onChange={(e) => setQuantity(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
-                  required
-                />
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  style={{ padding: '6px 12px', fontWeight: 800 }}
-                  onClick={() => setQuantity((prev) => Math.min(100, prev + 1))}
-                >
-                  +
-                </button>
+            {machine ? (
+              <div>
+                <label className="form-label">Operational Status</label>
+                <select className="form-select" value={status} onChange={(e) => setStatus(e.target.value)}>
+                  <option value="OPERATIONAL">OPERATIONAL</option>
+                  <option value="BREAKDOWN">BREAKDOWN</option>
+                  <option value="UNDER_MAINTENANCE">UNDER MAINTENANCE</option>
+                  <option value="DECOMMISSIONED">DECOMMISSIONED</option>
+                </select>
               </div>
-            </div>
-
+            ) : (
+              <div>
+                <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Quantity to Add *</span>
+                  <span style={{ color: 'var(--accent-cyan)', fontWeight: 700 }}>{quantity} Unit{quantity > 1 ? 's' : ''}</span>
+                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 12px', fontWeight: 800 }}
+                    onClick={() => setQuantity((prev) => Math.max(1, prev - 1))}
+                  >
+                    -
+                  </button>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    className="form-input"
+                    style={{ textAlign: 'center', fontWeight: 700 }}
+                    value={quantity}
+                    onChange={(e) => setQuantity(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+                    required
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    style={{ padding: '6px 12px', fontWeight: 800 }}
+                    onClick={() => setQuantity((prev) => Math.min(100, prev + 1))}
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            )}
             <div>
               <label className="form-label">Supplying Vendor</label>
               <select className="form-select" value={vendorId} onChange={(e) => setVendorId(e.target.value)}>

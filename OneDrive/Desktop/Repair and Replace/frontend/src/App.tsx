@@ -3,6 +3,7 @@ import { useAuth } from './context/AuthContext';
 import { Navbar } from './components/Layout/Navbar';
 import { Sidebar, NavTab } from './components/Layout/Sidebar';
 import { ExecutiveDashboard } from './components/Analytics/ExecutiveDashboard';
+import { MasterManagement } from './components/Admin/MasterManagement';
 import { CrewList } from './components/Admin/CrewList';
 import { MachineCatalog } from './components/Machines/MachineCatalog';
 import { VendorCatalog } from './components/Vendors/VendorCatalog';
@@ -93,6 +94,15 @@ export const AppContent: React.FC = () => {
     }
   }, [user?.role]);
 
+  const mainContentRef = React.useRef<HTMLElement | null>(null);
+
+  // Scroll to top smoothly when switching tabs
+  useEffect(() => {
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [activeTab]);
+
   const handleOpenBreakdownFromCatalog = (machine?: Machine) => {
     setTargetBreakdownMachine(machine || null);
     setBreakdownModalOpen(true);
@@ -122,13 +132,14 @@ export const AppContent: React.FC = () => {
           pendingReportsCount={pendingReportsCount}
         />
 
-        <main className="main-content">
+        <main className="main-content" ref={mainContentRef}>
           {activeTab === 'dashboard' && (
             <ExecutiveDashboard
               onNavigateTab={handleNavigateTab}
               onOpenBreakdown={handleOpenBreakdownFromCatalog}
             />
           )}
+          {activeTab === 'masters' && <MasterManagement />}
           {activeTab === 'crew' && <CrewList />}
           {activeTab === 'machines' && (
             <MachineCatalog

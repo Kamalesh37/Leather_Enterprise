@@ -21,6 +21,8 @@ import {
   FileText,
   Activity,
   Filter,
+  Edit2,
+  Trash2,
   X,
   Sparkles,
   ArrowRight,
@@ -73,6 +75,7 @@ export const MachineCatalog: React.FC<MachineCatalogProps> = ({
 
   // Modals
   const [formModalOpen, setFormModalOpen] = useState<boolean>(false);
+  const [editingMachine, setEditingMachine] = useState<Machine | null>(null);
   const [qrModalOpen, setQrModalOpen] = useState<boolean>(false);
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
   const [batchQrMachines, setBatchQrMachines] = useState<Machine[] | null>(null);
@@ -292,6 +295,33 @@ export const MachineCatalog: React.FC<MachineCatalogProps> = ({
     );
   };
 
+  const handleOpenCreate = () => {
+    setEditingMachine(null);
+    setFormModalOpen(true);
+  };
+
+  const handleOpenEdit = (m: Machine) => {
+    setEditingMachine(m);
+    setFormModalOpen(true);
+  };
+
+  const handleDeleteMachine = async (m: Machine) => {
+    if (
+      !window.confirm(
+        `Are you sure you want to permanently delete Machine [${m.machine_code}] "${m.name}"?`
+      )
+    ) {
+      return;
+    }
+    try {
+      await Api.deleteMachine(m.id);
+      toast.success(`Machine [${m.machine_code}] deleted successfully.`);
+      fetchMachines();
+    } catch (err: any) {
+      toast.error(err.message || 'Cannot delete machine with active breakdown tickets.');
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'OPERATIONAL':
@@ -388,9 +418,9 @@ export const MachineCatalog: React.FC<MachineCatalogProps> = ({
         </div>
 
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-          <button className="btn btn-primary" onClick={() => setFormModalOpen(true)}>
+          <button className="btn btn-primary" onClick={handleOpenCreate}>
             <Plus size={16} />
-            <span>Register New Machine Type</span>
+            <span>Register Machine</span>
           </button>
         </div>
       </div>
@@ -1204,6 +1234,7 @@ export const MachineCatalog: React.FC<MachineCatalogProps> = ({
         isOpen={formModalOpen}
         onClose={() => setFormModalOpen(false)}
         onSuccess={fetchMachines}
+        machine={editingMachine}
       />
 
       {/* 2. QR Passport Tag Modal (Single / Batch Sheet) */}
