@@ -19,6 +19,8 @@ import {
   FileText,
   Activity,
   Filter,
+  Edit2,
+  Trash2,
 } from 'lucide-react';
 
 interface MachineCatalogProps {
@@ -39,6 +41,7 @@ export const MachineCatalog: React.FC<MachineCatalogProps> = ({ onOpenBreakdown 
 
   // Modals
   const [formModalOpen, setFormModalOpen] = useState<boolean>(false);
+  const [editingMachine, setEditingMachine] = useState<Machine | null>(null);
   const [qrModalOpen, setQrModalOpen] = useState<boolean>(false);
   const [selectedMachine, setSelectedMachine] = useState<Machine | null>(null);
 
@@ -74,6 +77,33 @@ export const MachineCatalog: React.FC<MachineCatalogProps> = ({ onOpenBreakdown 
     fetchMachines();
   };
 
+  const handleOpenCreate = () => {
+    setEditingMachine(null);
+    setFormModalOpen(true);
+  };
+
+  const handleOpenEdit = (m: Machine) => {
+    setEditingMachine(m);
+    setFormModalOpen(true);
+  };
+
+  const handleDeleteMachine = async (m: Machine) => {
+    if (
+      !window.confirm(
+        `Are you sure you want to permanently delete Machine [${m.machine_code}] "${m.name}"?`
+      )
+    ) {
+      return;
+    }
+    try {
+      await Api.deleteMachine(m.id);
+      toast.success(`Machine [${m.machine_code}] deleted successfully.`);
+      fetchMachines();
+    } catch (err: any) {
+      toast.error(err.message || 'Cannot delete machine with active breakdown tickets.');
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'OPERATIONAL':
@@ -102,7 +132,7 @@ export const MachineCatalog: React.FC<MachineCatalogProps> = ({ onOpenBreakdown 
           </p>
         </div>
 
-        <button className="btn btn-primary" onClick={() => setFormModalOpen(true)}>
+        <button className="btn btn-primary" onClick={handleOpenCreate}>
           <Plus size={16} />
           <span>Register Machine</span>
         </button>
@@ -173,7 +203,25 @@ export const MachineCatalog: React.FC<MachineCatalogProps> = ({ onOpenBreakdown 
                   <div className="machine-code-badge">{m.machine_code}</div>
                   <div className="machine-name">{m.name}</div>
                 </div>
-                {getStatusBadge(m.status)}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  {getStatusBadge(m.status)}
+                  <button
+                    className="btn-ghost btn-sm"
+                    title="Edit Machine Specifications"
+                    onClick={() => handleOpenEdit(m)}
+                    style={{ padding: '4px 6px' }}
+                  >
+                    <Edit2 size={15} color="var(--primary-light)" />
+                  </button>
+                  <button
+                    className="btn-ghost btn-sm"
+                    title="Delete Machine Asset"
+                    onClick={() => handleDeleteMachine(m)}
+                    style={{ padding: '4px 6px' }}
+                  >
+                    <Trash2 size={15} color="var(--accent-rose)" />
+                  </button>
+                </div>
               </div>
 
               <div className="machine-meta-grid">
@@ -231,15 +279,26 @@ export const MachineCatalog: React.FC<MachineCatalogProps> = ({ onOpenBreakdown 
                     setSelectedMachine(m);
                     setQrModalOpen(true);
                   }}
+                  title="View and Print QR Passport"
                 >
                   <QrCode size={14} />
                   <span>QR Tag</span>
+                </button>
+
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => handleOpenEdit(m)}
+                  title="Edit Machine Details"
+                >
+                  <Edit2 size={14} />
+                  <span>Edit</span>
                 </button>
 
                 {onOpenBreakdown && (
                   <button
                     className={`btn btn-sm ${m.status === 'BREAKDOWN' ? 'btn-danger' : 'btn-primary'}`}
                     onClick={() => onOpenBreakdown(m)}
+                    style={{ marginLeft: 'auto' }}
                   >
                     <AlertTriangle size={14} />
                     <span>Report Breakdown</span>
@@ -256,6 +315,7 @@ export const MachineCatalog: React.FC<MachineCatalogProps> = ({ onOpenBreakdown 
         isOpen={formModalOpen}
         onClose={() => setFormModalOpen(false)}
         onSuccess={fetchMachines}
+        machine={editingMachine}
       />
 
       <QRLabelModal

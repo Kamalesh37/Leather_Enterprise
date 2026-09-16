@@ -1,17 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { Api } from '../../api/client';
-import { Block, Floor, Line, Vendor } from '../../types';
+import { Block, Floor, Line, Vendor, Machine } from '../../types';
 import { Modal } from '../Common/Modal';
 import { useToast } from '../Common/Toast';
-import { Cpu, Layers, Building, MapPin, Plus, Sparkles } from 'lucide-react';
+import { Cpu, Edit3, Plus, Sparkles } from 'lucide-react';
 
 interface MachineFormModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  machine?: Machine | null;
 }
 
-export const MachineFormModal: React.FC<MachineFormModalProps> = ({ isOpen, onClose, onSuccess }) => {
+export const MachineFormModal: React.FC<MachineFormModalProps> = ({
+  isOpen,
+  onClose,
+  onSuccess,
+  machine = null,
+}) => {
   const toast = useToast();
 
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -24,6 +30,7 @@ export const MachineFormModal: React.FC<MachineFormModalProps> = ({ isOpen, onCl
   const [modelNumber, setModelNumber] = useState<string>('');
   const [serialNumber, setSerialNumber] = useState<string>('');
   const [vendorId, setVendorId] = useState<string>('');
+  const [status, setStatus] = useState<string>('OPERATIONAL');
 
   const [selectedBlockId, setSelectedBlockId] = useState<string>('1');
   const [selectedFloorId, setSelectedFloorId] = useState<string>('1');
@@ -52,11 +59,47 @@ export const MachineFormModal: React.FC<MachineFormModalProps> = ({ isOpen, onCl
       Api.listVendors().then((res) => {
         if (res.success && res.data) {
           setVendors(res.data);
-          if (res.data.length > 0) setVendorId(String(res.data[0].id));
+          if (!machine && res.data.length > 0) setVendorId(String(res.data[0].id));
         }
       });
+
+      if (machine) {
+        setMachineCode(machine.machine_code || '');
+        setName(machine.name || '');
+        setModelNumber(machine.model_number || '');
+        setSerialNumber(machine.serial_number || '');
+        setVendorId(machine.vendor_id ? String(machine.vendor_id) : '');
+        setStatus(machine.status || 'OPERATIONAL');
+        setSelectedBlockId(machine.block_id ? String(machine.block_id) : '1');
+        setSelectedFloorId(machine.floor_id ? String(machine.floor_id) : '1');
+        setSelectedLineId(machine.line_id ? String(machine.line_id) : '1');
+
+        if (machine.specifications) {
+          setMotorSpecs(machine.specifications.motor_specs || '');
+          setNeedleType(machine.specifications.needle_type || '');
+          setHydraulicRating(machine.specifications.hydraulic_rating || '');
+          setVoltage(machine.specifications.operating_voltage || '');
+          setPressure(machine.specifications.air_pressure_bar || '');
+          setMaxSpeed(machine.specifications.max_speed_rpm || '');
+        }
+      } else {
+        setMachineCode('');
+        setName('');
+        setModelNumber('');
+        setSerialNumber('');
+        setStatus('OPERATIONAL');
+        setSelectedBlockId('1');
+        setSelectedFloorId('1');
+        setSelectedLineId('1');
+        setMotorSpecs('750W Direct Drive AC Servo');
+        setNeedleType('Schmetz 134-35 LR Diamond Point (140/22)');
+        setHydraulicRating('N/A (Pneumatic 6.0 Bar)');
+        setVoltage('230V Single Phase 50Hz');
+        setPressure('6.0 Bar');
+        setMaxSpeed('3,000 SPM');
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, machine]);
 
   const filteredFloors = floors.filter((f) => !selectedBlockId || String(f.block_id) === selectedBlockId);
   const filteredLines = lines.filter((l) => !selectedFloorId || String(l.floor_id) === selectedFloorId);
@@ -79,6 +122,7 @@ export const MachineFormModal: React.FC<MachineFormModalProps> = ({ isOpen, onCl
         block_id: selectedBlockId ? Number(selectedBlockId) : null,
         floor_id: selectedFloorId ? Number(selectedFloorId) : null,
         line_id: selectedLineId ? Number(selectedLineId) : null,
+        status,
         specifications: {
           motor_specs: motorSpecs,
           needle_type: needleType,
@@ -89,12 +133,17 @@ export const MachineFormModal: React.FC<MachineFormModalProps> = ({ isOpen, onCl
         },
       };
 
-      await Api.storeMachine(payload);
-      toast.success(`Machine ${machineCode} registered with unique QR code.`);
+      if (machine) {
+        await Api.updateMachine(machine.id, payload);
+        toast.success(`Machine ${machineCode} specifications updated.`);
+      } else {
+        await Api.storeMachine(payload);
+        toast.success(`Machine ${machineCode} registered with unique QR code.`);
+      }
       onSuccess();
       onClose();
     } catch (err: any) {
-      toast.error(err.message || 'Failed to register machine.');
+      toast.error(err.message || (machine ? 'Failed to update machine.' : 'Failed to register machine.'));
     } finally {
       setSubmitting(false);
     }
@@ -106,8 +155,8 @@ export const MachineFormModal: React.FC<MachineFormModalProps> = ({ isOpen, onCl
       onClose={onClose}
       title={
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <Cpu size={20} color="var(--primary)" />
-          <span>Register Leather Machinery & Generate QR Passport</span>
+          {machine ? <Edit3 size={20} color="var(--primary)" /> : <Cpu size={20} color="var(--primary)" />}
+          <span>{machine ? `Edit Machinery: ${machine.name} (${machine.machine_code})` : 'Register Leather Machinery & Generate QR Passport'}</span>
         </div>
       }
       size="lg"
@@ -117,7 +166,7 @@ export const MachineFormModal: React.FC<MachineFormModalProps> = ({ isOpen, onCl
             Cancel
           </button>
           <button type="button" className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
-            {submitting ? 'Registering...' : 'Save & Generate QR'}
+            {submitting ? 'Saving...' : machine ? 'Update Machinery' : 'Save & Generate QR'}
           </button>
         </div>
       }
@@ -136,7 +185,7 @@ export const MachineFormModal: React.FC<MachineFormModalProps> = ({ isOpen, onCl
                 className="form-input"
                 placeholder="e.g. MAC-DA-867-02"
                 value={machineCode}
-                onChange={(e) => setMachineCode(e.target.value)}
+                onChange={(e) => setMachineCode(e.target.value.toUpperCase())}
                 required
               />
             </div>
@@ -173,7 +222,16 @@ export const MachineFormModal: React.FC<MachineFormModalProps> = ({ isOpen, onCl
                 required
               />
             </div>
-            <div style={{ gridColumn: 'span 2' }}>
+            <div>
+              <label className="form-label">Operational Status</label>
+              <select className="form-select" value={status} onChange={(e) => setStatus(e.target.value)}>
+                <option value="OPERATIONAL">OPERATIONAL</option>
+                <option value="BREAKDOWN">BREAKDOWN</option>
+                <option value="UNDER_MAINTENANCE">UNDER MAINTENANCE</option>
+                <option value="DECOMMISSIONED">DECOMMISSIONED</option>
+              </select>
+            </div>
+            <div>
               <label className="form-label">Supplying Vendor</label>
               <select className="form-select" value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
                 <option value="">-- Select Vendor --</option>

@@ -1,23 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
 import { Role } from '../../types';
 import { Api } from '../../api/client';
 import {
   Shield,
   Layers,
-  UserCheck,
-  Zap,
-  Activity,
-  LogOut,
   ChevronDown,
   Building,
   MapPin,
   Cpu,
+  Sun,
+  Moon,
+  Database,
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
-  const { user, switchDemoRole, logout, loading } = useAuth();
+  const { user, switchDemoRole, loading } = useAuth();
+  const { theme, toggleTheme } = useTheme();
   const [dbStatus, setDbStatus] = useState<string>('CONNECTED');
+  const [dbDriver, setDbDriver] = useState<string>('MySQL');
   const [roleDropdownOpen, setRoleDropdownOpen] = useState<boolean>(false);
 
   useEffect(() => {
@@ -25,6 +27,9 @@ export const Navbar: React.FC = () => {
       .then((res) => {
         if (res.success && res.data) {
           setDbStatus(res.data.database || 'CONNECTED');
+          if (res.data.driver) {
+            setDbDriver(res.data.driver);
+          }
         }
       })
       .catch(() => setDbStatus('OFFLINE'));
@@ -57,13 +62,29 @@ export const Navbar: React.FC = () => {
       </div>
 
       <div className="navbar-center">
-        <div className="system-health-pill">
+        <div className="system-health-pill" title={`Connected to ${dbDriver} Database`}>
+          <Database size={13} style={{ color: dbStatus === 'CONNECTED' ? 'var(--accent-emerald)' : 'var(--accent-rose)' }} />
           <span className={`status-dot ${dbStatus === 'CONNECTED' ? 'online' : 'offline'}`}></span>
-          <span>PostgreSQL DB: {dbStatus}</span>
+          <span>{dbDriver} DB: {dbStatus}</span>
         </div>
       </div>
 
       <div className="navbar-actions">
+        {/* Dark / Light Mode Toggle */}
+        <button
+          className="theme-toggle-btn"
+          onClick={toggleTheme}
+          title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Mode`}
+          aria-label="Toggle Theme"
+        >
+          {theme === 'dark' ? (
+            <Sun size={17} className="theme-icon sun-icon" />
+          ) : (
+            <Moon size={17} className="theme-icon moon-icon" />
+          )}
+          <span className="theme-label">{theme === 'dark' ? 'Light' : 'Dark'}</span>
+        </button>
+
         {/* Role Switcher */}
         <div className="role-switcher-container">
           <button

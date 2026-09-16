@@ -206,4 +206,254 @@ class InventoryController extends Controller
             ],
         ]);
     }
+
+    // ==========================================
+    // WAREHOUSE & INVENTORY CATEGORY MASTER CRUD
+    // ==========================================
+
+    public function listCategories(): JsonResponse
+    {
+        $categories = \App\Models\InventoryCategory::orderBy('name')->get();
+
+        $stats = Part::select(
+            'category',
+            DB::raw('COUNT(*) as parts_count'),
+            DB::raw('SUM(stock_quantity) as total_units'),
+            DB::raw('SUM(stock_quantity * unit_cost) as total_value')
+        )
+        ->groupBy('category')
+        ->get()
+        ->keyBy('category');
+
+        $data = $categories->map(function ($cat) use ($stats) {
+            $catStat = $stats[$cat->name] ?? null;
+            return [
+                'id' => $cat->id,
+                'category_code' => $cat->category_code,
+                'name' => $cat->name,
+                'description' => $cat->description,
+                'storage_zone' => $cat->storage_zone,
+                'color' => $cat->color,
+                'is_active' => (bool) $cat->is_active,
+                'parts_count' => $catStat ? (int) $catStat->parts_count : 0,
+                'total_units' => $catStat ? (int) $catStat->total_units : 0,
+                'total_value' => $catStat ? (float) $catStat->total_value : 0.0,
+                'created_at' => $cat->created_at,
+                'updated_at' => $cat->updated_at,
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $data,
+        ]);
+    }
+
+    public function storeCategory(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'category_code' => 'required|string|max:50|unique:inventory_categories,category_code',
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'storage_zone' => 'required|string|max:100',
+            'color' => 'nullable|string|max:20',
+            'is_active' => 'nullable|boolean',
+        ]);
+
+        $category = \App\Models\InventoryCategory::create([
+            'category_code' => strtoupper($validated['category_code']),
+            'name' => $validated['name'],
+            'description' => $validated['description'] ?? null,
+            'storage_zone' => $validated['storage_zone'],
+            'color' => $validated['color'] ?? '#818cf8',
+            'is_active' => $validated['is_active'] ?? true,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Inventory Category created successfully.',
+            'data' => $category,
+        ], 201);
+    }
+
+    public function updateCategory(Request $request, int $id): JsonResponse
+    {
+        $category = \App\Models\InventoryCategory::findOrFail($id);
+
+        $validated = $request->validate([
+            'category_code' => 'sometimes|required|string|max:50|unique:inventory_categories,category_code,' . $id,
+            'name' => 'sometimes|required|string|max:255',
+            'description' => 'nullable|string',
+            'storage_zone' => 'sometimes|required|string|max:100',
+            'color' => 'nullable|string|max:20',
+            'is_active' => 'nullable|boolean',
+        ]);
+
+        $oldName = $category->name;
+        if (isset($validated['category_code'])) {
+            $validated['category_code'] = strtoupper($validated['category_code']);
+        }
+
+        $category->update($validated);
+
+        // If category name changed, update corresponding parts
+        if (isset($validated['name']) && $validated['name'] !== $oldName) {
+            Part::where('category', $oldName)->update(['category' => $validated['name']]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Inventory Category updated successfully.',
+            'data' => $category,
+        ]);
+    }
+
+    public function destroyCategory(int $id): JsonResponse
+    {
+        $category = \App\Models\InventoryCategory::findOrFail($id);
+
+        if (Part::where('category', $category->name)->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => "Cannot delete Category [{$category->name}] because it has active spare parts allocated to it. Reassign parts first.",
+            ], 422);
+        }
+
+        $category->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => "Category [{$category->name}] deleted successfully.",
+        ]);
+    }
+
+    // =========================================================================
+    // WAREHOUSE STORAGE ZONES CRUD
+    // =========================================================================
+    public function listStorageZones(Request $request): JsonResponse
+    {
+        $query = \App\Models\WarehouseStorageZone::query();
+
+        if ($request->filled('search')) {
+            $s = $request->search;
+            $query->where(function ($q) use ($s) {
+                $q->where('name', 'like', "%{$s}%")
+                  ->orWhere('zone_code', 'like', "%{$s}%")
+                  ->orWhere('aisle_bay', 'like', "%{$s}%")
+                  ->orWhere('location_type', 'like', "%{$s}%")
+                  ->orWhere('description', 'like', "%{$s}%");
+            });
+        }
+
+        $zones = $query->orderBy('zone_code')->get();
+
+        $data = $zones->map(function ($zone) {
+            $categoriesCount = \App\Models\InventoryCategory::where('storage_zone', 'like', "%{$zone->zone_code}%")
+                ->orWhere('storage_zone', 'like', "%{$zone->name}%")
+                ->count();
+
+            return [
+                'id' => $zone->id,
+                'zone_code' => $zone->zone_code,
+                'name' => $zone->name,
+                'location_type' => $zone->location_type,
+                'aisle_bay' => $zone->aisle_bay,
+                'capacity_bins' => (int) $zone->capacity_bins,
+                'description' => $zone->description,
+                'color' => $zone->color,
+                'is_active' => (bool) $zone->is_active,
+                'categories_count' => $categoriesCount,
+                'created_at' => $zone->created_at,
+                'updated_at' => $zone->updated_at,
+            ];
+        });
+
+        return response()->json([
+            'success' => true,
+            'data' => $data,
+        ]);
+    }
+
+    public function storeStorageZone(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'zone_code' => 'required|string|max:32|unique:warehouse_storage_zones,zone_code',
+            'name' => 'required|string|max:128',
+            'location_type' => 'nullable|string|max:64',
+            'aisle_bay' => 'nullable|string|max:128',
+            'capacity_bins' => 'nullable|integer|min:1',
+            'description' => 'nullable|string',
+            'color' => 'nullable|string|max:20',
+            'is_active' => 'nullable|boolean',
+        ]);
+
+        $zone = \App\Models\WarehouseStorageZone::create([
+            'zone_code' => strtoupper($validated['zone_code']),
+            'name' => $validated['name'],
+            'location_type' => $validated['location_type'] ?? 'RACK',
+            'aisle_bay' => $validated['aisle_bay'] ?? null,
+            'capacity_bins' => $validated['capacity_bins'] ?? 20,
+            'description' => $validated['description'] ?? null,
+            'color' => $validated['color'] ?? '#3b82f6',
+            'is_active' => $validated['is_active'] ?? true,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Warehouse Storage Zone created successfully.',
+            'data' => $zone,
+        ], 201);
+    }
+
+    public function updateStorageZone(Request $request, int $id): JsonResponse
+    {
+        $zone = \App\Models\WarehouseStorageZone::findOrFail($id);
+
+        $validated = $request->validate([
+            'zone_code' => 'sometimes|required|string|max:32|unique:warehouse_storage_zones,zone_code,' . $id,
+            'name' => 'sometimes|required|string|max:128',
+            'location_type' => 'nullable|string|max:64',
+            'aisle_bay' => 'nullable|string|max:128',
+            'capacity_bins' => 'nullable|integer|min:1',
+            'description' => 'nullable|string',
+            'color' => 'nullable|string|max:20',
+            'is_active' => 'nullable|boolean',
+        ]);
+
+        if (isset($validated['zone_code'])) {
+            $validated['zone_code'] = strtoupper($validated['zone_code']);
+        }
+
+        $zone->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Warehouse Storage Zone updated successfully.',
+            'data' => $zone,
+        ]);
+    }
+
+    public function destroyStorageZone(int $id): JsonResponse
+    {
+        $zone = \App\Models\WarehouseStorageZone::findOrFail($id);
+
+        // Check if any category or part refers to this zone
+        $hasLinkedCategory = \App\Models\InventoryCategory::where('storage_zone', 'like', "%{$zone->zone_code}%")
+            ->orWhere('storage_zone', 'like', "%{$zone->name}%")
+            ->exists();
+
+        if ($hasLinkedCategory) {
+            return response()->json([
+                'success' => false,
+                'message' => "Cannot delete Zone [{$zone->name}] because it is assigned to active Inventory Categories.",
+            ], 422);
+        }
+
+        $zone->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => "Warehouse Storage Zone [{$zone->name}] deleted successfully.",
+        ]);
+    }
 }

@@ -61,6 +61,9 @@ export interface Block {
   name: string;
   code: string;
   description?: string;
+  floors_count?: number;
+  machines_count?: number;
+  users_count?: number;
   floors?: Floor[];
 }
 
@@ -69,6 +72,9 @@ export interface Floor {
   block_id: number;
   name: string;
   floor_number: number;
+  lines_count?: number;
+  machines_count?: number;
+  users_count?: number;
   block?: Block;
   lines?: Line[];
 }
@@ -78,8 +84,23 @@ export interface Line {
   floor_id: number;
   name: string;
   line_code: string;
+  machines_count?: number;
+  users_count?: number;
+  repair_logs_count?: number;
   floor?: Floor;
   machines?: Machine[];
+}
+
+export interface RoleMaster {
+  role: Role;
+  name: string;
+  category: string;
+  description: string;
+  scope: string;
+  color: string;
+  badge: string;
+  permissions: Record<string, boolean>;
+  crew_count?: number;
 }
 
 export interface Vendor {
@@ -137,6 +158,36 @@ export interface ServiceCatalogItem {
   estimated_duration_minutes: number;
   recommended_frequency_days: number;
   standard_procedures: string[];
+}
+
+export interface InventoryCategoryMaster {
+  id: number;
+  category_code: string;
+  name: string;
+  description: string | null;
+  storage_zone: string | null;
+  color: string | null;
+  is_active: boolean;
+  parts_count?: number;
+  total_units?: number;
+  total_value?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface WarehouseStorageZoneMaster {
+  id: number;
+  zone_code: string;
+  name: string;
+  location_type: string;
+  aisle_bay: string | null;
+  capacity_bins: number;
+  description: string | null;
+  color: string | null;
+  is_active: boolean;
+  categories_count?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Part {

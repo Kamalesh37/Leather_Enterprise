@@ -34,11 +34,32 @@ Route::prefix('auth')->group(function () {
     });
 });
 
-// Organizational Hierarchy
+// Organizational Hierarchy & Master Tables
 Route::prefix('hierarchy')->group(function () {
     Route::get('/', [HierarchyController::class, 'index']);
     Route::get('/options', [HierarchyController::class, 'options']);
     Route::get('/summary', [HierarchyController::class, 'dashboardSummary']);
+
+    // Master Tables
+    Route::get('/blocks', [HierarchyController::class, 'listBlocks']);
+    Route::post('/blocks', [HierarchyController::class, 'storeBlock']);
+    Route::put('/blocks/{id}', [HierarchyController::class, 'updateBlock']);
+    Route::delete('/blocks/{id}', [HierarchyController::class, 'destroyBlock']);
+
+    Route::get('/floors', [HierarchyController::class, 'listFloors']);
+    Route::post('/floors', [HierarchyController::class, 'storeFloor']);
+    Route::put('/floors/{id}', [HierarchyController::class, 'updateFloor']);
+    Route::delete('/floors/{id}', [HierarchyController::class, 'destroyFloor']);
+
+    Route::get('/lines', [HierarchyController::class, 'listLines']);
+    Route::post('/lines', [HierarchyController::class, 'storeLine']);
+    Route::put('/lines/{id}', [HierarchyController::class, 'updateLine']);
+    Route::delete('/lines/{id}', [HierarchyController::class, 'destroyLine']);
+
+    Route::get('/roles', [HierarchyController::class, 'listRoles']);
+    Route::post('/roles', [HierarchyController::class, 'storeRole']);
+    Route::put('/roles/{id}', [HierarchyController::class, 'updateRole']);
+    Route::delete('/roles/{id}', [HierarchyController::class, 'destroyRole']);
 });
 
 // Crew Management & RBAC Matrix
@@ -63,6 +84,8 @@ Route::prefix('machines')->group(function () {
     Route::post('/', [MachineController::class, 'store']);
     Route::get('/qr/{qrHash}', [MachineController::class, 'lookupByQR']);
     Route::get('/{id}', [MachineController::class, 'show']);
+    Route::put('/{id}', [MachineController::class, 'update']);
+    Route::delete('/{id}', [MachineController::class, 'destroy']);
     Route::get('/{id}/qr-label', [MachineController::class, 'qrLabel']);
 });
 
@@ -100,6 +123,18 @@ Route::prefix('inventory')->group(function () {
     Route::post('/adjust', [InventoryController::class, 'adjustStock']);
     Route::get('/audit-logs', [InventoryController::class, 'auditLogs']);
     Route::get('/stats', [InventoryController::class, 'stats']);
+
+    // Inventory Category Master
+    Route::get('/categories', [InventoryController::class, 'listCategories']);
+    Route::post('/categories', [InventoryController::class, 'storeCategory']);
+    Route::put('/categories/{id}', [InventoryController::class, 'updateCategory']);
+    Route::delete('/categories/{id}', [InventoryController::class, 'destroyCategory']);
+
+    // Warehouse Storage Zone Master
+    Route::get('/storage-zones', [InventoryController::class, 'listStorageZones']);
+    Route::post('/storage-zones', [InventoryController::class, 'storeStorageZone']);
+    Route::put('/storage-zones/{id}', [InventoryController::class, 'updateStorageZone']);
+    Route::delete('/storage-zones/{id}', [InventoryController::class, 'destroyStorageZone']);
 });
 
 // Factory Performance & Analytics

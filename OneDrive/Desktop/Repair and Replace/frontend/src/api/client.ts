@@ -4,11 +4,14 @@ import {
   Block,
   Floor,
   InventoryAuditLog,
+  InventoryCategoryMaster,
+  WarehouseStorageZoneMaster,
   Line,
   Machine,
   Part,
   RepairLog,
   Role,
+  RoleMaster,
   ServiceCatalogItem,
   User,
   Vendor,
@@ -66,7 +69,14 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
 export const Api = {
   // System Health
-  getHealth: () => request<{ status: string; database: string }>('/health'),
+  getHealth: () =>
+    request<{
+      status: string;
+      database: string;
+      driver?: string;
+      database_name?: string;
+      environment?: string;
+    }>('/health'),
 
   // Auth & Roles
   login: (credentials: { email: string; password: string }) =>
@@ -81,11 +91,58 @@ export const Api = {
 
   switchRole: (role: Role) => request<{ user: User; token: string }>(`/auth/switch-role?role=${role}`),
 
-  // Organizational Hierarchy
+  // Organizational Hierarchy & Master Tables
   getHierarchyTree: () => request<Block[]>('/hierarchy'),
   getHierarchyOptions: () =>
     request<{ blocks: Block[]; floors: Floor[]; lines: Line[] }>('/hierarchy/options'),
   getHierarchySummary: () => request<any>('/hierarchy/summary'),
+
+  // Master Tables Management
+  listMasterBlocks: () => request<Block[]>('/hierarchy/blocks'),
+  createMasterBlock: (payload: { name: string; code: string; description?: string }) =>
+    request<Block>('/hierarchy/blocks', { method: 'POST', body: JSON.stringify(payload) }),
+  updateMasterBlock: (id: number, payload: { name?: string; code?: string; description?: string }) =>
+    request<Block>(`/hierarchy/blocks/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteMasterBlock: (id: number) =>
+    request<any>(`/hierarchy/blocks/${id}`, { method: 'DELETE' }),
+
+  listMasterFloors: () => request<Floor[]>('/hierarchy/floors'),
+  createMasterFloor: (payload: { block_id: number; name: string; floor_number: number }) =>
+    request<Floor>('/hierarchy/floors', { method: 'POST', body: JSON.stringify(payload) }),
+  updateMasterFloor: (id: number, payload: { block_id?: number; name?: string; floor_number?: number }) =>
+    request<Floor>(`/hierarchy/floors/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteMasterFloor: (id: number) =>
+    request<any>(`/hierarchy/floors/${id}`, { method: 'DELETE' }),
+
+  listMasterLines: () => request<Line[]>('/hierarchy/lines'),
+  createMasterLine: (payload: { floor_id: number; name: string; line_code: string }) =>
+    request<Line>('/hierarchy/lines', { method: 'POST', body: JSON.stringify(payload) }),
+  updateMasterLine: (id: number, payload: { floor_id?: number; name?: string; line_code?: string }) =>
+    request<Line>(`/hierarchy/lines/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteMasterLine: (id: number) =>
+    request<any>(`/hierarchy/lines/${id}`, { method: 'DELETE' }),
+
+  listMasterRoles: () => request<RoleMaster[]>('/hierarchy/roles'),
+  createMasterRole: (payload: {
+    role_key: string;
+    name: string;
+    category: string;
+    description?: string;
+    scope: string;
+    color?: string;
+    badge?: string;
+    permissions?: Record<string, boolean>;
+  }) => request<RoleMaster>('/hierarchy/roles', { method: 'POST', body: JSON.stringify(payload) }),
+  updateMasterRole: (id: number, payload: {
+    name?: string;
+    category?: string;
+    description?: string;
+    scope?: string;
+    color?: string;
+    badge?: string;
+    permissions?: Record<string, boolean>;
+  }) => request<RoleMaster>(`/hierarchy/roles/${id}`, { method: 'PUT', body: JSON.stringify(payload) }),
+  deleteMasterRole: (id: number) => request<any>(`/hierarchy/roles/${id}`, { method: 'DELETE' }),
 
   // Crew Management & RBAC Matrix
   listCrew: (params: { role?: string; block_id?: number; floor_id?: number; line_id?: number; search?: string } = {}) => {
@@ -159,6 +216,17 @@ export const Api = {
     request<Machine>('/machines', {
       method: 'POST',
       body: JSON.stringify(payload),
+    }),
+
+  updateMachine: (id: number, payload: any) =>
+    request<Machine>(`/machines/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+
+  deleteMachine: (id: number) =>
+    request<any>(`/machines/${id}`, {
+      method: 'DELETE',
     }),
 
   getMachineById: (id: number) => request<Machine>(`/machines/${id}`),
@@ -277,6 +345,91 @@ export const Api = {
     if (params.low_stock) q.append('low_stock', 'true');
     return request<Part[]>(`/inventory/parts?${q.toString()}`);
   },
+
+  listInventoryCategories: (params: { search?: string } = {}) => {
+    const q = new URLSearchParams();
+    if (params.search) q.append('search', params.search);
+    return request<InventoryCategoryMaster[]>(`/inventory/categories?${q.toString()}`);
+  },
+
+  createInventoryCategory: (payload: {
+    category_code: string;
+    name: string;
+    description?: string;
+    storage_zone?: string;
+    color?: string;
+    is_active?: boolean;
+  }) =>
+    request<InventoryCategoryMaster>('/inventory/categories', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  updateInventoryCategory: (
+    id: number,
+    payload: {
+      category_code?: string;
+      name?: string;
+      description?: string;
+      storage_zone?: string;
+      color?: string;
+      is_active?: boolean;
+    }
+  ) =>
+    request<InventoryCategoryMaster>(`/inventory/categories/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+
+  deleteInventoryCategory: (id: number) =>
+    request<any>(`/inventory/categories/${id}`, {
+      method: 'DELETE',
+    }),
+
+  // Warehouse Storage Zones Master
+  listWarehouseStorageZones: (params: { search?: string } = {}) => {
+    const q = new URLSearchParams();
+    if (params.search) q.append('search', params.search);
+    return request<WarehouseStorageZoneMaster[]>(`/inventory/storage-zones?${q.toString()}`);
+  },
+
+  createWarehouseStorageZone: (payload: {
+    zone_code: string;
+    name: string;
+    location_type?: string;
+    aisle_bay?: string;
+    capacity_bins?: number;
+    description?: string;
+    color?: string;
+    is_active?: boolean;
+  }) =>
+    request<WarehouseStorageZoneMaster>('/inventory/storage-zones', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  updateWarehouseStorageZone: (
+    id: number,
+    payload: {
+      zone_code?: string;
+      name?: string;
+      location_type?: string;
+      aisle_bay?: string;
+      capacity_bins?: number;
+      description?: string;
+      color?: string;
+      is_active?: boolean;
+    }
+  ) =>
+    request<WarehouseStorageZoneMaster>(`/inventory/storage-zones/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+
+  deleteWarehouseStorageZone: (id: number) =>
+    request<any>(`/inventory/storage-zones/${id}`, {
+      method: 'DELETE',
+    }),
 
   createPart: (payload: any) =>
     request<Part>('/inventory/parts', {

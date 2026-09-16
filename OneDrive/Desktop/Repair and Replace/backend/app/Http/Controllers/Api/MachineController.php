@@ -191,4 +191,62 @@ class MachineController extends Controller
             ],
         ]);
     }
+
+    public function update(Request $request, int $id): JsonResponse
+    {
+        $machine = Machine::findOrFail($id);
+
+        $validated = $request->validate([
+            'machine_code' => 'sometimes|required|string|max:50|unique:machines,machine_code,' . $id,
+            'name' => 'sometimes|required|string|max:255',
+            'model_number' => 'sometimes|required|string|max:100',
+            'serial_number' => 'sometimes|required|string|max:100',
+            'vendor_id' => 'nullable|exists:vendors,id',
+            'block_id' => 'nullable|exists:blocks,id',
+            'floor_id' => 'nullable|exists:floors,id',
+            'line_id' => 'nullable|exists:lines,id',
+            'status' => 'sometimes|required|string|in:OPERATIONAL,UNDER_MAINTENANCE,BREAKDOWN,DECOMMISSIONED',
+            'specifications' => 'nullable|array',
+            'image_url' => 'nullable|string',
+            'installed_at' => 'nullable|date',
+        ]);
+
+        if ($request->hasFile('image')) {
+            $path = $request->file('image')->store('machines', 'public');
+            $validated['image_url'] = '/storage/' . $path;
+        }
+
+        $machine->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Machine specifications updated successfully.',
+            'data' => $machine->fresh(['vendor', 'block', 'floor', 'line']),
+        ]);
+    }
+
+    public function destroy(int $id): JsonResponse
+    {
+        $machine = Machine::findOrFail($id);
+
+        $hasOpenTickets = $machine->repairLogs()
+            ->whereNotIn('status', [RepairLog::STATUS_OPERATIONAL, RepairLog::STATUS_CLOSED])
+            ->exists();
+
+        if ($hasOpenTickets) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot delete machine with active breakdown tickets in progress. Please close or complete open tickets first.',
+            ], 422);
+        }
+
+        // Clean up repair logs associations before deleting machine
+        $machine->repairLogs()->delete();
+        $machine->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => "Machine [{$machine->machine_code}] deleted successfully.",
+        ]);
+    }
 }
